@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "Candidate profile, preferences, and personal API tokens",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "resumeMasterText": { "type": "string" },
+        "preferences": { "type": "object" },
+        "candidateProfile": { "type": "object" },
+        "apiToken": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "applications": {
+      "title": "Job Application",
+      "description": "Tracked job application with status and tailoring details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "company": { "type": "string" },
+        "role": { "type": "string" },
+        "jobDescriptionText": { "type": "string" },
+        "status": { "type": "string" },
+        "appliedDate": { "type": "string" },
+        "source": { "type": "string" },
+        "tailoredResumeText": { "type": "string" },
+        "notes": { "type": "string" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["userId", "company", "role", "status"]
+    },
+    "interviewLogs": {
+      "title": "Interview Round Log",
+      "description": "Log of interview questions, rounds, and outcomes",
+      "type": "object",
+      "properties": {
+        "applicationId": { "type": "string" },
+        "userId": { "type": "string" },
+        "round": { "type": "string" },
+        "questionsAsked": { "type": "string" },
+        "outcome": { "type": "string" },
+        "reflection": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "round", "date"]
+    },
+    "trackers": {
+      "title": "Learning Tracker",
+      "description": "Learning trackers for DSA, Courses, and Skills with topic lists, daily goals, and streaks",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "dailyGoal": { "type": "number" },
+        "streak": { "type": "number" },
+        "lastCompletedDate": { "type": "string" },
+        "topics": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["userId", "name", "type", "topics", "dailyGoal", "streak"]
+    }
+  }
+}

@@ -1,0 +1,20 @@
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
+
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+
+// Database ID specified in config
+const configAny = firebaseConfig as any;
+
+export const db = configAny.firestoreDatabaseId
+  ? getFirestore(app, configAny.firestoreDatabaseId)
+  : getFirestore(app);
+
+export { signInWithPopup, firebaseSignOut, onAuthStateChanged, GoogleAuthProvider };
+export type { User };

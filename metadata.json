@@ -1,0 +1,6 @@
+{
+  "name": "JobPilot",
+  "description": "A job search management platform with AI resume tailoring, application tracking, interview prep, Gmail auto-tracking, and a Learning Hub for DSA, courses, and skill trackers with AI syllabus generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
