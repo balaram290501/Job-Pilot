@@ -150,4 +150,13 @@ export interface GenerateTrackerResponse {
   suggestedDailyGoal: number;
 }
 
+export interface JobSuggestion {
+  title: string;
+  company: string;
+  location: string;
+  whyItFits: string;
+  requiredSkills: string[];
+  searchQuery: string;
+}
+
 

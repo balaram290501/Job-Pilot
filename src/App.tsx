@@ -8,6 +8,7 @@ import { InterviewPrepView } from './components/InterviewPrepView';
 import { GmailSyncView } from './components/GmailSyncView';
 import { SettingsView } from './components/SettingsView';
 import { LearningHubView } from './components/LearningHubView';
+import { JobSuggestionsView } from './components/JobSuggestionsView';
 import { Application, InterviewLog, LearningTracker } from './types';
 import { db } from './lib/firebase';
 import {
@@ -23,7 +24,7 @@ import {
 import { PlaneTakeoff, Sparkles, Lock, ShieldCheck } from 'lucide-react';
 
 function MainAppContent() {
-  const { user, loading, signInWithGoogle } = useAuth();
+  const { user, userDoc, loading, signInWithGoogle } = useAuth();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [applications, setApplications] = useState<Application[]>([]);
@@ -289,6 +290,8 @@ function MainAppContent() {
         {activeTab === 'dashboard' && (
           <DashboardView
             applications={applications}
+            interviewLogs={interviewLogs}
+            trackers={trackers}
             onOpenAddModal={() => {
               setActiveTab('tracker');
               setIsAddModalOpen(true);
@@ -307,6 +310,14 @@ function MainAppContent() {
             onSelectApplicationForInterview={handleSelectForInterview}
             isAddModalOpen={isAddModalOpen}
             setIsAddModalOpen={setIsAddModalOpen}
+          />
+        )}
+
+        {activeTab === 'job-suggestions' && (
+          <JobSuggestionsView
+            userDoc={userDoc}
+            onAddApplication={handleAddApplication}
+            setActiveTab={setActiveTab}
           />
         )}
 

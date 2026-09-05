@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { tailorResume, generatePrepBrief, analyzeRejectionPatterns, classifyEmailsWithGemini, generateTrackerWithGemini, generateLearningTracker } from './src/server/geminiService.js';
+import { tailorResume, generatePrepBrief, analyzeRejectionPatterns, classifyEmailsWithGemini, generateTrackerWithGemini, generateLearningTracker, generateJobSuggestions } from './src/server/geminiService.js';
 import { getUserByApiToken, generateSaveJobBookmarkletScript, generateAutofillBookmarkletScript } from './src/server/bookmarkletService.js';
 import { adminDb } from './src/lib/serverFirebase.js';
 
@@ -116,6 +116,31 @@ async function startServer() {
     } catch (err: any) {
       console.error('Error in /api/generate-tracker-topics:', err);
       res.status(500).json({ error: err.message || 'Failed to generate learning tracker topics with AI.' });
+    }
+  });
+
+  // FEATURE: AI Job Suggestions API
+  app.post('/api/job-suggestions', async (req, res) => {
+    try {
+      const {
+        resumeMasterText,
+        resumeText,
+        targetRoles = [],
+        locations = [],
+        seniority = '',
+      } = req.body;
+
+      const effectiveResume = resumeMasterText || resumeText || '';
+      const suggestions = await generateJobSuggestions(
+        effectiveResume,
+        Array.isArray(targetRoles) ? targetRoles : [],
+        Array.isArray(locations) ? locations : [],
+        seniority
+      );
+      res.json(suggestions);
+    } catch (err: any) {
+      console.error('Error in /api/job-suggestions:', err);
+      res.status(500).json({ error: err.message || 'Failed to generate job suggestions.' });
     }
   });
 

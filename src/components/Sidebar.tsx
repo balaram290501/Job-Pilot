@@ -11,12 +11,14 @@ import {
   BookmarkPlus,
   Sparkles,
   Brain,
+  Briefcase,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export type ActiveTab =
   | 'dashboard'
   | 'tracker'
+  | 'job-suggestions'
   | 'resume-tailor'
   | 'interview-prep'
   | 'gmail-sync'
@@ -34,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'tracker', label: 'Applications Tracker', icon: Kanban },
+    { id: 'job-suggestions', label: 'Job Suggestions', icon: Briefcase, isNew: true },
     { id: 'resume-tailor', label: 'AI Resume Tailor', icon: FileText, hasAi: true },
     { id: 'interview-prep', label: 'Interview Prep & Logs', icon: MessageSquareCode },
     { id: 'gmail-sync', label: 'Gmail Auto-Track', icon: Mail },
@@ -82,11 +85,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             >
               <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
               <span>{item.label}</span>
-              {item.hasAi && (
+              {item.isNew ? (
+                <span className="ml-auto flex items-center text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-500/30 font-bold tracking-wider">
+                  NEW
+                </span>
+              ) : item.hasAi ? (
                 <span className="ml-auto flex items-center gap-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded-full border border-cyan-500/30 font-semibold">
                   <Sparkles className="w-2.5 h-2.5" /> AI
                 </span>
-              )}
+              ) : null}
             </button>
           );
         })}

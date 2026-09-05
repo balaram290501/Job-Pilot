@@ -1079,7 +1079,7 @@ const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
             <div>
               <h2 className="text-lg font-bold text-white">AI Learning Roadmap Generator</h2>
               <p className="text-xs text-slate-400">
-                Powered by Gemini 2.5 Flash — transforms goals into actionable syllabi
+                Powered by Gemini — transforms goals into actionable syllabi
               </p>
             </div>
           </div>

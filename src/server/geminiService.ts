@@ -8,6 +8,7 @@ import {
   ClassifiedEmail,
   GenerateTrackerResponse,
   TrackerType,
+  JobSuggestion,
 } from '../types.js';
 
 function getGenAI() {
@@ -16,6 +17,56 @@ function getGenAI() {
     throw new Error('GEMINI_API_KEY is not configured on the server.');
   }
   return new GoogleGenAI({ apiKey });
+}
+
+/**
+ * Resilient Gemini caller that uses supported models with graceful fallback
+ * and handles tool quota issues.
+ */
+async function callGemini(params: {
+  contents: string;
+  config?: any;
+  model?: string;
+}) {
+  const ai = getGenAI();
+  const modelsToTry = [
+    params.model,
+    'gemini-3.1-flash-lite',
+    'gemini-flash-latest',
+  ].filter(Boolean) as string[];
+  let lastError: any = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config,
+      });
+      return response;
+    } catch (err: any) {
+      console.warn(`[Gemini API] Request with ${model} failed (${err?.message || err}). Trying fallback...`);
+      lastError = err;
+
+      // If search tool quota failed (429), retry without tools
+      if (params.config?.tools && (err?.status === 429 || err?.message?.includes('quota') || err?.message?.includes('RESOURCE_EXHAUSTED'))) {
+        try {
+          const configWithoutTools = { ...params.config };
+          delete configWithoutTools.tools;
+          const retryResponse = await ai.models.generateContent({
+            model,
+            contents: params.contents,
+            config: configWithoutTools,
+          });
+          return retryResponse;
+        } catch (retryErr: any) {
+          lastError = retryErr;
+        }
+      }
+    }
+  }
+
+  throw lastError || new Error('Failed to generate content with Gemini.');
 }
 
 /**
@@ -65,8 +116,7 @@ Respond strictly with valid JSON conforming to this schema (no extra formatting 
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+  const response = await callGemini({
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
@@ -90,8 +140,6 @@ export async function generatePrepBrief(
   role: string,
   userLogs: InterviewLog[]
 ): Promise<PrepBriefResponse> {
-  const ai = getGenAI();
-
   const userLogsSummary = userLogs.length > 0
     ? userLogs.map(l => `[Company: ${company}, Round: ${l.round}, Outcome: ${l.outcome}, Questions: ${l.questionsAsked}, Reflection: ${l.reflection}]`).join('\n')
     : 'No past interview logs recorded yet.';
@@ -124,8 +172,7 @@ Return JSON matching this format:
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+  const response = await callGemini({
     contents: prompt,
     config: {
       tools: [{ googleSearch: {} }],
@@ -214,8 +261,7 @@ Return valid JSON:
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+  const response = await callGemini({
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
@@ -244,8 +290,6 @@ export async function classifyEmailsWithGemini(
   existingApps: Array<{ id: string; company: string; role: string; status: string }>
 ): Promise<ClassifiedEmail[]> {
   if (emails.length === 0) return [];
-
-  const ai = getGenAI();
 
   const prompt = `
 You are an email assistant for job searches. Classify the following emails and match them to existing application records if possible.
@@ -281,8 +325,7 @@ Return a JSON array of objects:
 ]
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+  const response = await callGemini({
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
@@ -305,8 +348,6 @@ export async function generateLearningTracker(
   userPrompt: string,
   targetDays?: number
 ): Promise<GenerateTrackerResponse> {
-  const ai = getGenAI();
-
   const prompt = `
 You are an expert technical curriculum designer and learning roadmap architect.
 The user wants to create a comprehensive, structured learning tracker based on: "${userPrompt}".
@@ -343,8 +384,7 @@ Respond strictly with valid JSON conforming to this schema:
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+  const response = await callGemini({
     contents: prompt,
     config: {
       responseMimeType: 'application/json',
@@ -389,6 +429,76 @@ export async function generateTrackerWithGemini(
   preferredType?: TrackerType
 ): Promise<GenerateTrackerResponse> {
   return generateLearningTracker(query);
+}
+
+/**
+ * FEATURE: Generate Tailored Job Suggestions with Gemini
+ */
+export async function generateJobSuggestions(
+  resumeText: string,
+  targetRoles: string[] = [],
+  locations: string[] = [],
+  seniority?: string
+): Promise<JobSuggestion[]> {
+  const prompt = `
+You are an expert technical career advisor and executive recruiter.
+Analyze the candidate's resume and job search preferences to recommend 8 to 10 highly tailored, realistic job opportunities that match their profile.
+
+Candidate Profile & Preferences:
+- Target Roles: ${targetRoles.length > 0 ? targetRoles.join(', ') : 'Software Engineering / Technical roles'}
+- Preferred Locations: ${locations.length > 0 ? locations.join(', ') : 'Remote / Hybrid / Flexible'}
+- Seniority Level: ${seniority || 'Mid / Senior / Not specified'}
+
+Candidate Resume:
+${resumeText || 'No resume text provided.'}
+
+Instructions:
+1. Provide between 8 and 10 job suggestions.
+2. Each suggestion should feature a realistic company known to hire for these roles (include well-known tech firms, high-growth startups, or innovative tech leaders).
+3. Specify a clear, accurate job title, company name, location (e.g. "San Francisco, CA (Hybrid)", "Remote, US", "Bangalore, India", etc. tailored to user preferences if provided).
+4. For 'whyItFits', explain in 1-2 concise, compelling sentences why this role is a strong match for their specific skills, experience, or background.
+5. Provide 3-6 relevant 'requiredSkills' as string tags.
+6. Provide an effective 'searchQuery' that would locate this job posting or similar openings on Google / LinkedIn / Careers pages (e.g. "Senior Frontend Engineer Stripe San Francisco jobs").
+
+Return JSON format matching:
+[
+  {
+    "title": "Senior Frontend Engineer",
+    "company": "Stripe",
+    "location": "San Francisco, CA (Hybrid)",
+    "whyItFits": "Your extensive React and TypeScript experience aligning with complex UI design systems makes you a natural fit for Stripe's core dashboard team.",
+    "requiredSkills": ["React", "TypeScript", "UI Architecture", "GraphQL", "Performance"],
+    "searchQuery": "Senior Frontend Engineer Stripe jobs San Francisco"
+  }
+]
+`;
+
+  const response = await callGemini({
+    model: 'gemini-2.0-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: 'application/json',
+    },
+  });
+
+  const text = response.text || '[]';
+  try {
+    const raw = JSON.parse(text);
+    if (Array.isArray(raw)) {
+      return raw.map((item: any) => ({
+        title: item.title || 'Software Engineer',
+        company: item.company || 'Tech Company',
+        location: item.location || 'Remote',
+        whyItFits: item.whyItFits || 'Matches your technical background and skill profile.',
+        requiredSkills: Array.isArray(item.requiredSkills) ? item.requiredSkills : [],
+        searchQuery: item.searchQuery || `${item.title || ''} ${item.company || ''} jobs`.trim(),
+      }));
+    }
+    return [];
+  } catch (err) {
+    console.error('Failed to parse Gemini job suggestions:', text);
+    throw new Error('Failed to parse job suggestions from AI.');
+  }
 }
 
 
