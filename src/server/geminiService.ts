@@ -299,42 +299,45 @@ Return a JSON array of objects:
 }
 
 /**
- * FEATURE: Generate Learning Tracker with Gemini
+ * FEATURE: Generate Structured Learning Tracker
  */
-export async function generateTrackerWithGemini(
-  query: string,
-  preferredType?: TrackerType
+export async function generateLearningTracker(
+  userPrompt: string,
+  targetDays?: number
 ): Promise<GenerateTrackerResponse> {
   const ai = getGenAI();
 
   const prompt = `
 You are an expert technical curriculum designer and learning roadmap architect.
-The user wants to create a comprehensive learning tracker for: "${query}".
-${preferredType ? `Preferred tracker type: "${preferredType}".` : ''}
+The user wants to create a comprehensive, structured learning tracker based on: "${userPrompt}".
+${targetDays ? `The user aims to complete this tracker in approximately ${targetDays} days.` : ''}
 
 Task instructions:
-1. Determine the best tracker title/name based on the query (e.g. "Striver's A2Z DSA Sheet", "NeetCode 150", "System Design for Senior Engineers", "React 19 & Next.js Full-Stack Mastery", "Advanced SQL & Database Internals").
-2. Classify the type into exactly one of: "DSA", "Course", or "Skills".
-3. Write a concise, motivating 1-2 sentence description of what this tracker covers.
-4. Recommend a realistic daily goal (integer from 1 to 5 topics/problems per day).
-5. Generate a thorough, logically sequenced list of topics/problems.
-   - For standard sheets (like Striver A2Z, NeetCode 150, Blind 75, Love Babbar, etc.), include the actual canonical topics and problem categories in authentic sequence!
-   - For DSA, include category (e.g. "Arrays", "Two Pointers", "Sliding Window", "Stack & Queue", "Binary Search", "Linked List", "Recursion", "Trees", "BST", "Graphs", "Dynamic Programming", "Tries") and difficulty ("Easy", "Medium", "Hard").
-   - For Courses/Skills, organize into sequential modules/milestones (e.g. "Module 1: Foundations", "Module 2: Core Patterns", "Module 3: Advanced Architectures", "Module 4: Real-world Projects").
-   - Provide between 15 to 45 highly structured, distinct topic items so the user gets a comprehensive, actionable syllabus.
+1. Generate an appropriate, professional tracker "name" (e.g. "Striver A2Z DSA Sheet", "NeetCode 150", "System Design for Senior Engineers", "React 19 & Next.js Full-Stack Mastery", "Advanced SQL & Database Internals").
+2. Classify the tracker "type" into exactly one of: "dsa", "course", "skills", or "custom".
+3. Write a concise, motivating 1-2 sentence "description" of what this tracker covers.
+4. Recommend a realistic "suggestedDailyGoal" (an integer, e.g. 1 to 5 topics/problems per day). ${targetDays ? `Factor in the target timeframe of ${targetDays} days relative to the total number of topics.` : ''}
+5. Generate a thorough, logically sequenced "topics" array.
+   - For standard coding sheets (e.g. Striver A2Z, NeetCode 150, Blind 75, Love Babbar 450), include authentic topics and canonical problem patterns in sequential order.
+   - For each topic item, provide:
+     * "title": Clear topic or problem title (e.g. "Two Sum", "Sliding Window Maximum", "Invert Binary Tree", "Database Indexing & B-Trees").
+     * "difficulty": Difficulty level ("easy", "medium", or "hard").
+     * "link": Authoritative resource or problem link (e.g. LeetCode URL, documentation URL, or empty string "").
+     * "pattern": Category, pattern, or module name (e.g. "Arrays & Hashing", "Two Pointers", "Binary Search", "Dynamic Programming", "System Architecture", "State Management").
+   - Provide a comprehensive, structured list of topics (typically between 15 to 40 distinct items).
 
 Respond strictly with valid JSON conforming to this schema:
 {
   "name": "Exact curriculum name",
-  "type": "DSA", // "DSA" | "Course" | "Skills"
+  "type": "dsa",
   "description": "Brief description of the roadmap...",
-  "recommendedDailyGoal": 2,
+  "suggestedDailyGoal": 2,
   "topics": [
     {
-      "title": "Topic or Problem Title (e.g., Two Sum, Sliding Window Maximum, Redux Toolkit Setup)",
-      "category": "Category or Module Name (e.g., Step 1: Arrays, Module 2: State Management)",
-      "difficulty": "Easy", // "Easy" | "Medium" | "Hard" or appropriate level
-      "resourceLink": "" // optional URL or empty string
+      "title": "Topic or Problem Title",
+      "difficulty": "medium",
+      "link": "",
+      "pattern": "Core pattern or module"
     }
   ]
 }
@@ -350,15 +353,42 @@ Respond strictly with valid JSON conforming to this schema:
 
   const text = response.text || '{}';
   try {
-    const parsed = JSON.parse(text) as GenerateTrackerResponse;
-    if (!parsed.name) parsed.name = query;
-    if (!parsed.type) parsed.type = preferredType || 'DSA';
-    if (!parsed.topics || !Array.isArray(parsed.topics)) parsed.topics = [];
-    if (!parsed.recommendedDailyGoal) parsed.recommendedDailyGoal = 2;
+    const raw = JSON.parse(text);
+    const validTypes: TrackerType[] = ['dsa', 'course', 'skills', 'custom'];
+    const rawType = typeof raw.type === 'string' ? (raw.type.toLowerCase() as TrackerType) : 'dsa';
+    const type: TrackerType = validTypes.includes(rawType) ? rawType : 'dsa';
+
+    const parsed: GenerateTrackerResponse = {
+      name: raw.name || userPrompt,
+      type,
+      description: raw.description || `Learning tracker for ${userPrompt}`,
+      suggestedDailyGoal: Number(raw.suggestedDailyGoal) || 2,
+      topics: Array.isArray(raw.topics)
+        ? raw.topics.map((t: any) => ({
+            title: t.title || 'Untitled Topic',
+            difficulty: (['easy', 'medium', 'hard'].includes(t.difficulty?.toLowerCase())
+              ? t.difficulty.toLowerCase()
+              : 'medium') as 'easy' | 'medium' | 'hard',
+            link: t.link || t.resourceLink || '',
+            pattern: t.pattern || t.category || 'General Topics',
+          }))
+        : [],
+    };
     return parsed;
   } catch (err) {
-    console.error('Failed to parse Gemini generated tracker:', text);
-    throw new Error('Failed to parse generated syllabus from AI.');
+    console.error('Failed to parse Gemini generated learning tracker:', text);
+    throw new Error('Failed to parse generated learning tracker from AI.');
   }
 }
+
+/**
+ * FEATURE: Generate Learning Tracker with Gemini (Alias / Helper)
+ */
+export async function generateTrackerWithGemini(
+  query: string,
+  preferredType?: TrackerType
+): Promise<GenerateTrackerResponse> {
+  return generateLearningTracker(query);
+}
+
 

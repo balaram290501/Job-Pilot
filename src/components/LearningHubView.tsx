@@ -1,36 +1,37 @@
 import React, { useState, useMemo } from 'react';
 import {
-  LearningTracker,
-  TrackerType,
-  TrackerTopic,
-  GenerateTrackerResponse,
-} from '../types';
-import {
-  GraduationCap,
+  Brain,
   Sparkles,
-  Flame,
-  Target,
   Plus,
   CheckCircle2,
   Circle,
-  Trash2,
-  Edit3,
+  Flame,
+  Calendar,
+  Target,
+  Clock,
   Search,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileText,
+  Trash2,
+  X,
+  Loader2,
+  ArrowRight,
   BookOpen,
   Code2,
   Briefcase,
-  ExternalLink,
-  ChevronDown,
-  ChevronRight,
-  RefreshCw,
   RotateCcw,
-  CheckCheck,
-  Award,
+  AlertCircle,
   Layers,
-  Calendar,
-  X,
-  FileText,
+  Check,
 } from 'lucide-react';
+import {
+  LearningTracker,
+  TrackerTopic,
+  TrackerType,
+  GenerateTrackerResponse,
+} from '../types';
 
 interface LearningHubViewProps {
   trackers: LearningTracker[];
@@ -39,38 +40,57 @@ interface LearningHubViewProps {
   onDeleteTracker: (id: string) => Promise<void>;
 }
 
-const SAMPLE_TEMPLATES = [
+// Preset color choices
+const COLOR_PRESETS = [
+  { label: 'Indigo', value: '#6366f1', bg: 'bg-indigo-500', ring: 'ring-indigo-500' },
+  { label: 'Emerald', value: '#10b981', bg: 'bg-emerald-500', ring: 'ring-emerald-500' },
+  { label: 'Amber', value: '#f59e0b', bg: 'bg-amber-500', ring: 'ring-amber-500' },
+  { label: 'Rose', value: '#f43f5e', bg: 'bg-rose-500', ring: 'ring-rose-500' },
+  { label: 'Cyan', value: '#06b6d4', bg: 'bg-cyan-500', ring: 'ring-cyan-500' },
+  { label: 'Purple', value: '#a855f7', bg: 'bg-purple-500', ring: 'ring-purple-500' },
+];
+
+// Quick templates for empty state & AI modal
+const QUICK_TEMPLATES = [
   {
-    title: 'Striver A2Z DSA sheet',
-    type: 'DSA' as TrackerType,
-    goal: 2,
-    desc: 'Complete SDE sheet covering Arrays, Binary Search, Trees, DP, Graphs & more.',
+    title: 'Striver A2Z DSA Sheet',
+    prompt: 'Striver A2Z DSA sheet with Arrays, Binary Search, Trees, Graphs, DP',
+    days: 60,
+    color: '#6366f1',
   },
   {
     title: 'NeetCode 150 Coding Interview',
-    type: 'DSA' as TrackerType,
-    goal: 2,
-    desc: 'The most popular 150 LeetCode patterns for FAANG/top tech interviews.',
+    prompt: 'NeetCode 150 LeetCode patterns for FAANG technical interviews',
+    days: 45,
+    color: '#10b981',
   },
   {
     title: 'System Design for Senior Engineers',
-    type: 'Skills' as TrackerType,
-    goal: 1,
-    desc: 'Scalability, Load Balancing, Caching, Sharding, Message Queues & Microservices.',
+    prompt: 'System Design interview mastery: Scalability, Caching, Sharding, Kafka, Microservices',
+    days: 30,
+    color: '#a855f7',
   },
   {
-    title: 'Fullstack React 19 & Next.js Roadmap',
-    type: 'Course' as TrackerType,
-    goal: 2,
-    desc: 'Server Components, Actions, Routing, Auth, Optimization & Deployment.',
+    title: 'React 19 & Next.js Full-Stack',
+    prompt: 'Fullstack React 19, Server Components, Next.js App Router, Auth & Performance',
+    days: 30,
+    color: '#06b6d4',
   },
   {
-    title: 'SQL & Database Indexing Mastery',
-    type: 'Skills' as TrackerType,
-    goal: 1,
-    desc: 'Query execution plans, B-trees, indexing, ACID transactions & PostgreSQL tuning.',
+    title: 'SQL & Database Internals',
+    prompt: 'Database indexing, B-Trees, Query Optimization, Transactions & PostgreSQL Internals',
+    days: 21,
+    color: '#f59e0b',
   },
 ];
+
+const getTodayStr = () => new Date().toISOString().split('T')[0];
+
+const getYesterdayStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+};
 
 export const LearningHubView: React.FC<LearningHubViewProps> = ({
   trackers,
@@ -78,1135 +98,871 @@ export const LearningHubView: React.FC<LearningHubViewProps> = ({
   onUpdateTracker,
   onDeleteTracker,
 }) => {
-  // Selected tracker for detailed view
-  const [selectedTrackerId, setSelectedTrackerId] = useState<string>(
-    trackers.length > 0 ? trackers[0].id : ''
-  );
-
-  // Sync selected tracker if list changes or tracker deleted
-  const activeTracker = useMemo(() => {
-    return trackers.find((t) => t.id === selectedTrackerId) || trackers[0] || null;
-  }, [trackers, selectedTrackerId]);
-
-  // View mode inside tracker
-  const [activeFilter, setActiveFilter] = useState<'all' | 'pending' | 'completed'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
-
-  // Note expansion
-  const [editingNotesTopicId, setEditingNotesTopicId] = useState<string | null>(null);
-  const [tempNoteText, setTempNoteText] = useState<string>('');
-
-  // Modals
+  // Modal states
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [isEditTrackerModalOpen, setIsEditTrackerModalOpen] = useState(false);
-  const [isAddTopicModalOpen, setIsAddTopicModalOpen] = useState(false);
 
-  // AI Modal Form State
-  const [aiPrompt, setAiPrompt] = useState('Striver A2Z DSA sheet');
-  const [aiType, setAiType] = useState<TrackerType>('DSA');
-  const [aiDailyGoal, setAiDailyGoal] = useState<number>(2);
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [aiPreviewResult, setAiPreviewResult] = useState<GenerateTrackerResponse | null>(null);
+  // Search & filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<'all' | TrackerType>('all');
 
-  // Manual Tracker Form State
-  const [manualName, setManualName] = useState('');
-  const [manualType, setManualType] = useState<TrackerType>('DSA');
-  const [manualDescription, setManualDescription] = useState('');
-  const [manualDailyGoal, setManualDailyGoal] = useState(2);
-  const [manualTopicsText, setManualTopicsText] = useState('');
+  // Overall statistics calculations
+  const stats = useMemo(() => {
+    const totalTrackers = trackers.length;
+    let totalTopics = 0;
+    let completedTopics = 0;
+    let maxStreak = 0;
 
-  // Single Topic Add Form State
-  const [newTopicTitle, setNewTopicTitle] = useState('');
-  const [newTopicCategory, setNewTopicCategory] = useState('');
-  const [newTopicDifficulty, setNewTopicDifficulty] = useState('Medium');
-  const [newTopicLink, setNewTopicLink] = useState('');
-
-  // Edit Tracker Form State
-  const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState<TrackerType>('DSA');
-  const [editDailyGoal, setEditDailyGoal] = useState(2);
-  const [editStreak, setEditStreak] = useState(0);
-
-  // Helper date strings
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
-  const getYesterdayStr = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
-  };
-
-  // Check how many completed today for active tracker
-  const todayStr = getTodayStr();
-  const todayCompletedCount = useMemo(() => {
-    if (!activeTracker) return 0;
-    return activeTracker.topics.filter(
-      (t) => t.completed && t.completedAt && t.completedAt.startsWith(todayStr)
-    ).length;
-  }, [activeTracker, todayStr]);
-
-  // Overall workspace stats across all trackers
-  const totalTrackersCount = trackers.length;
-  const totalTopicsCount = trackers.reduce((sum, t) => sum + t.topics.length, 0);
-  const totalCompletedCount = trackers.reduce(
-    (sum, t) => sum + t.topics.filter((top) => top.completed).length,
-    0
-  );
-  const overallPercentage =
-    totalTopicsCount > 0 ? Math.round((totalCompletedCount / totalTopicsCount) * 100) : 0;
-  const highestStreak = trackers.reduce((max, t) => Math.max(max, t.streak || 0), 0);
-
-  // Categories in active tracker
-  const categories = useMemo(() => {
-    if (!activeTracker) return [];
-    const set = new Set<string>();
-    activeTracker.topics.forEach((t) => {
-      set.add(t.category || 'General Topics');
+    trackers.forEach((t) => {
+      const topicsCount = t.topics?.length || 0;
+      const completed = t.topics?.filter((top) => top.completed).length || 0;
+      totalTopics += topicsCount;
+      completedTopics += completed;
+      if ((t.streak || 0) > maxStreak) {
+        maxStreak = t.streak || 0;
+      }
     });
-    return Array.from(set);
-  }, [activeTracker]);
 
-  // Filtered topics in active tracker
-  const filteredTopics = useMemo(() => {
-    if (!activeTracker) return [];
-    return activeTracker.topics.filter((topic) => {
-      if (activeFilter === 'pending' && topic.completed) return false;
-      if (activeFilter === 'completed' && !topic.completed) return false;
-      if (selectedCategory !== 'all' && (topic.category || 'General Topics') !== selectedCategory) {
+    const progressPercentage =
+      totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
+
+    return {
+      totalTrackers,
+      totalTopics,
+      completedTopics,
+      progressPercentage,
+      maxStreak,
+    };
+  }, [trackers]);
+
+  // Filtered trackers
+  const filteredTrackers = useMemo(() => {
+    return trackers.filter((t) => {
+      if (selectedTypeFilter !== 'all' && t.type !== selectedTypeFilter) {
         return false;
       }
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchesTitle = topic.title.toLowerCase().includes(query);
-        const matchesCat = (topic.category || '').toLowerCase().includes(query);
-        const matchesDiff = (topic.difficulty || '').toLowerCase().includes(query);
-        if (!matchesTitle && !matchesCat && !matchesDiff) return false;
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const matchName = t.name.toLowerCase().includes(q);
+        const matchDesc = (t.description || '').toLowerCase().includes(q);
+        const matchTopics = t.topics?.some((top) =>
+          top.title.toLowerCase().includes(q) || (top.pattern || '').toLowerCase().includes(q)
+        );
+        if (!matchName && !matchDesc && !matchTopics) return false;
       }
       return true;
     });
-  }, [activeTracker, activeFilter, selectedCategory, searchQuery]);
+  }, [trackers, selectedTypeFilter, searchTerm]);
 
-  // Group filtered topics by category
-  const groupedTopics = useMemo(() => {
-    const groups: Record<string, TrackerTopic[]> = {};
-    filteredTopics.forEach((t) => {
-      const cat = t.category || 'General Topics';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(t);
-    });
-    return groups;
-  }, [filteredTopics]);
-
-  // Topic Completion Toggle with intelligent streak update
-  const handleToggleTopic = async (topicId: string) => {
-    if (!activeTracker) return;
-
-    const topic = activeTracker.topics.find((t) => t.id === topicId);
-    if (!topic) return;
-
-    const newCompleted = !topic.completed;
-    const now = new Date().toISOString();
-    const today = getTodayStr();
-    const yesterday = getYesterdayStr();
-
-    let newStreak = activeTracker.streak || 0;
-    let newLastCompletedDate = activeTracker.lastCompletedDate;
-
-    if (newCompleted) {
-      // User is completing a topic
-      if (activeTracker.lastCompletedDate === today) {
-        // Already logged activity today, streak stays intact
-      } else if (activeTracker.lastCompletedDate === yesterday) {
-        // Logged yesterday, streak increases
-        newStreak += 1;
-        newLastCompletedDate = today;
-      } else {
-        // First activity or streak reset
-        newStreak = 1;
-        newLastCompletedDate = today;
-      }
-    }
-
-    const updatedTopics = activeTracker.topics.map((t) => {
-      if (t.id === topicId) {
-        return {
-          ...t,
-          completed: newCompleted,
-          completedAt: newCompleted ? now : undefined,
-        };
-      }
-      return t;
-    });
-
-    await onUpdateTracker(activeTracker.id, {
-      topics: updatedTopics,
-      streak: newStreak,
-      lastCompletedDate: newLastCompletedDate,
-      lastUpdated: now,
-    });
+  // AI Modal Pre-fill trigger
+  const handleOpenAiWithTemplate = (template: typeof QUICK_TEMPLATES[0]) => {
+    setIsAiModalOpen(true);
+    // Let the modal pick up this initial value
+    setAiModalInitialPrompt(template.prompt);
+    setAiModalInitialDays(template.days);
+    setAiModalInitialColor(template.color);
   };
 
-  // Mark all topics in a category completed/uncompleted
-  const handleToggleCategoryAll = async (categoryName: string, markCompleted: boolean) => {
-    if (!activeTracker) return;
-
-    const now = new Date().toISOString();
-    const today = getTodayStr();
-    let newStreak = activeTracker.streak || 0;
-    let newLastCompletedDate = activeTracker.lastCompletedDate;
-
-    if (markCompleted && activeTracker.lastCompletedDate !== today) {
-      if (activeTracker.lastCompletedDate === getYesterdayStr()) {
-        newStreak += 1;
-      } else {
-        newStreak = 1;
-      }
-      newLastCompletedDate = today;
-    }
-
-    const updatedTopics = activeTracker.topics.map((t) => {
-      if ((t.category || 'General Topics') === categoryName) {
-        return {
-          ...t,
-          completed: markCompleted,
-          completedAt: markCompleted ? now : undefined,
-        };
-      }
-      return t;
-    });
-
-    await onUpdateTracker(activeTracker.id, {
-      topics: updatedTopics,
-      streak: newStreak,
-      lastCompletedDate: newLastCompletedDate,
-      lastUpdated: now,
-    });
-  };
-
-  // Delete a topic
-  const handleDeleteTopic = async (topicId: string) => {
-    if (!activeTracker) return;
-    const updatedTopics = activeTracker.topics.filter((t) => t.id !== topicId);
-    await onUpdateTracker(activeTracker.id, {
-      topics: updatedTopics,
-      lastUpdated: new Date().toISOString(),
-    });
-  };
-
-  // Save notes on a topic
-  const handleSaveTopicNote = async (topicId: string) => {
-    if (!activeTracker) return;
-    const updatedTopics = activeTracker.topics.map((t) => {
-      if (t.id === topicId) {
-        return {
-          ...t,
-          notes: tempNoteText.trim(),
-        };
-      }
-      return t;
-    });
-    await onUpdateTracker(activeTracker.id, {
-      topics: updatedTopics,
-      lastUpdated: new Date().toISOString(),
-    });
-    setEditingNotesTopicId(null);
-    setTempNoteText('');
-  };
-
-  // Reset Progress in active tracker
-  const handleResetTrackerProgress = async () => {
-    if (!activeTracker) return;
-    if (
-      !window.confirm(
-        `Are you sure you want to reset all progress for "${activeTracker.name}"? This will uncheck all topics.`
-      )
-    ) {
-      return;
-    }
-
-    const updatedTopics = activeTracker.topics.map((t) => ({
-      ...t,
-      completed: false,
-      completedAt: undefined,
-    }));
-
-    await onUpdateTracker(activeTracker.id, {
-      topics: updatedTopics,
-      streak: 0,
-      lastCompletedDate: undefined,
-      lastUpdated: new Date().toISOString(),
-    });
-  };
-
-  // Add single topic to active tracker
-  const handleAddSingleTopic = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeTracker || !newTopicTitle.trim()) return;
-
-    const newTopic: TrackerTopic = {
-      id: 'topic_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-      title: newTopicTitle.trim(),
-      category: newTopicCategory.trim() || 'General Topics',
-      difficulty: newTopicDifficulty || 'Medium',
-      resourceLink: newTopicLink.trim() || undefined,
-      completed: false,
-    };
-
-    const updatedTopics = [...activeTracker.topics, newTopic];
-    await onUpdateTracker(activeTracker.id, {
-      topics: updatedTopics,
-      lastUpdated: new Date().toISOString(),
-    });
-
-    setNewTopicTitle('');
-    setNewTopicCategory('');
-    setNewTopicLink('');
-    setIsAddTopicModalOpen(false);
-  };
-
-  // Open Edit Tracker Modal
-  const handleOpenEditTracker = () => {
-    if (!activeTracker) return;
-    setEditName(activeTracker.name);
-    setEditType(activeTracker.type);
-    setEditDailyGoal(activeTracker.dailyGoal || 2);
-    setEditStreak(activeTracker.streak || 0);
-    setIsEditTrackerModalOpen(true);
-  };
-
-  // Save Edit Tracker
-  const handleSaveEditTracker = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeTracker || !editName.trim()) return;
-
-    await onUpdateTracker(activeTracker.id, {
-      name: editName.trim(),
-      type: editType,
-      dailyGoal: Number(editDailyGoal) || 1,
-      streak: Number(editStreak) || 0,
-      lastUpdated: new Date().toISOString(),
-    });
-
-    setIsEditTrackerModalOpen(false);
-  };
-
-  // Delete active tracker
-  const handleDeleteActiveTracker = async () => {
-    if (!activeTracker) return;
-    if (
-      !window.confirm(
-        `Are you sure you want to delete "${activeTracker.name}"? This action cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    const trackerToDelete = activeTracker.id;
-    await onDeleteTracker(trackerToDelete);
-
-    // Switch to another tracker
-    const remaining = trackers.filter((t) => t.id !== trackerToDelete);
-    if (remaining.length > 0) {
-      setSelectedTrackerId(remaining[0].id);
-    } else {
-      setSelectedTrackerId('');
-    }
-  };
-
-  // Call Gemini API to generate tracker topics
-  const handleGenerateAiTracker = async () => {
-    if (!aiPrompt.trim()) return;
-
-    setIsGeneratingAi(true);
-    setAiError(null);
-
-    try {
-      const res = await fetch('/api/generate-tracker-topics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: aiPrompt.trim(),
-          preferredType: aiType,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to generate curriculum with Gemini.');
-      }
-
-      const data: GenerateTrackerResponse = await res.json();
-      setAiPreviewResult(data);
-      if (data.type) setAiType(data.type);
-      if (data.recommendedDailyGoal) setAiDailyGoal(data.recommendedDailyGoal);
-    } catch (err: any) {
-      console.error('AI Tracker generation error:', err);
-      setAiError(err.message || 'Error communicating with Gemini AI.');
-    } finally {
-      setIsGeneratingAi(false);
-    }
-  };
-
-  // Save AI Generated Tracker to Firestore
-  const handleSaveAiTrackerToFirestore = async () => {
-    if (!aiPreviewResult) return;
-
-    const topics: TrackerTopic[] = aiPreviewResult.topics.map((t, idx) => ({
-      id: `topic_${Date.now()}_${idx}`,
-      title: t.title,
-      category: t.category || 'Core Curriculum',
-      difficulty: t.difficulty || (aiType === 'DSA' ? 'Medium' : undefined),
-      resourceLink: t.resourceLink || undefined,
-      completed: false,
-    }));
-
-    const now = new Date().toISOString();
-    const newTrackerData: Omit<LearningTracker, 'id'> = {
-      userId: '', // set in App.tsx
-      name: aiPreviewResult.name || aiPrompt,
-      type: aiPreviewResult.type || aiType,
-      description: aiPreviewResult.description || '',
-      dailyGoal: aiDailyGoal || aiPreviewResult.recommendedDailyGoal || 2,
-      streak: 0,
-      topics,
-      createdAt: now,
-      lastUpdated: now,
-    };
-
-    const newId = await onAddTracker(newTrackerData);
-    if (newId) {
-      setSelectedTrackerId(newId);
-    }
-
-    setIsAiModalOpen(false);
-    setAiPreviewResult(null);
-  };
-
-  // Save Manual Tracker to Firestore
-  const handleSaveManualTracker = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualName.trim()) return;
-
-    // Parse topics from textarea lines
-    const lines = manualTopicsText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    const topics: TrackerTopic[] =
-      lines.length > 0
-        ? lines.map((line, idx) => {
-            // Check for category tag syntax like "[Arrays] Two Sum"
-            let category = 'General Topics';
-            let title = line;
-            const match = line.match(/^\[(.*?)\]\s*(.*)$/);
-            if (match) {
-              category = match[1];
-              title = match[2];
-            }
-            return {
-              id: `topic_${Date.now()}_${idx}`,
-              title,
-              category,
-              completed: false,
-            };
-          })
-        : [
-            {
-              id: `topic_${Date.now()}_0`,
-              title: 'Welcome to your new tracker! Click + to add topics.',
-              category: 'Getting Started',
-              completed: false,
-            },
-          ];
-
-    const now = new Date().toISOString();
-    const newTrackerData: Omit<LearningTracker, 'id'> = {
-      userId: '',
-      name: manualName.trim(),
-      type: manualType,
-      description: manualDescription.trim() || undefined,
-      dailyGoal: Number(manualDailyGoal) || 2,
-      streak: 0,
-      topics,
-      createdAt: now,
-      lastUpdated: now,
-    };
-
-    const newId = await onAddTracker(newTrackerData);
-    if (newId) {
-      setSelectedTrackerId(newId);
-    }
-
-    setManualName('');
-    setManualDescription('');
-    setManualTopicsText('');
-    setIsManualModalOpen(false);
-  };
-
-  // Type Badge Renderer
-  const renderTypeBadge = (type: TrackerType) => {
-    switch (type) {
-      case 'DSA':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
-            <Code2 className="w-3 h-3" /> DSA
-          </span>
-        );
-      case 'Course':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
-            <BookOpen className="w-3 h-3" /> Course
-          </span>
-        );
-      case 'Skills':
-        return (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            <Briefcase className="w-3 h-3" /> Skills
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
-
-  // Difficulty Badge
-  const renderDifficultyBadge = (difficulty?: string) => {
-    if (!difficulty) return null;
-    const diff = difficulty.toLowerCase();
-    if (diff.includes('easy')) {
-      return (
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-          Easy
-        </span>
-      );
-    }
-    if (diff.includes('hard')) {
-      return (
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30">
-          Hard
-        </span>
-      );
-    }
-    return (
-      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
-        Medium
-      </span>
-    );
-  };
+  const [aiModalInitialPrompt, setAiModalInitialPrompt] = useState('Striver A2Z DSA sheet');
+  const [aiModalInitialDays, setAiModalInitialDays] = useState(45);
+  const [aiModalInitialColor, setAiModalInitialColor] = useState('#6366f1');
 
   return (
-    <div
-      id="learning-hub-view"
-      className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-8 space-y-6 select-none font-sans"
-    >
-      {/* Header Banner */}
-      <div
-        id="learning-hub-header"
-        className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative overflow-hidden"
-      >
-        <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-indigo-500/10 via-purple-500/5 to-transparent pointer-events-none rounded-full blur-2xl" />
-
-        <div className="space-y-2 z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-400 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-              <GraduationCap className="w-6 h-6" />
+    <div id="learning-hub-view" className="space-y-8 animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
+        <div>
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-sm">
+              <Brain className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                Learning Hub
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-cyan-300" /> AI Powered
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-white tracking-tight">Learning Hub</h1>
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                  <Sparkles className="w-3 h-3 text-indigo-400" /> AI Powered
                 </span>
-              </h1>
-              <p className="text-xs text-slate-400">
-                Master DSA sheets, technical courses, and interview skill roadmaps with daily streak accountability.
+              </div>
+              <p className="text-sm text-slate-400 mt-0.5">
+                Curate DSA sheets, engineering roadmaps, and course goals with AI-driven milestones.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Global Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3 z-10">
+        {/* Header Action Buttons */}
+        <div className="flex items-center gap-3">
           <button
-            id="open-ai-tracker-btn"
-            onClick={() => {
-              setAiPreviewResult(null);
-              setAiError(null);
-              setIsAiModalOpen(true);
-            }}
-            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition transform active:scale-95"
+            id="open-manual-create-btn"
+            onClick={() => setIsManualModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 text-sm font-medium transition-all shadow-sm active:scale-95"
           >
-            <Sparkles className="w-4 h-4 text-cyan-200" />
-            <span>AI Generate Tracker</span>
+            <Plus className="w-4 h-4 text-slate-400" />
+            <span>Manual</span>
           </button>
 
           <button
-            id="open-manual-tracker-btn"
-            onClick={() => setIsManualModalOpen(true)}
-            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700/80 flex items-center gap-1.5 transition"
+            id="open-ai-generate-btn"
+            onClick={() => {
+              setAiModalInitialPrompt('NeetCode 150 Coding Interview');
+              setAiModalInitialDays(45);
+              setAiModalInitialColor('#6366f1');
+              setIsAiModalOpen(true);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-medium transition-all shadow-md shadow-indigo-500/20 active:scale-95"
           >
-            <Plus className="w-4 h-4 text-slate-300" />
-            <span>Custom Tracker</span>
+            <Sparkles className="w-4 h-4" />
+            <span>AI Generate</span>
           </button>
         </div>
       </div>
 
-      {/* Top Workspace Stats Grid */}
-      <div id="learning-stats-grid" className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Stat 1: Total Trackers */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0">
+      {/* Overall Stats Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-slate-900/90 border border-slate-800/90 rounded-xl p-4 flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
             <Layers className="w-5 h-5" />
           </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-400 font-medium truncate">Active Trackers</p>
-            <p className="text-xl font-bold text-white tracking-tight">{totalTrackersCount}</p>
+          <div>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Tracks</p>
+            <h3 className="text-2xl font-bold text-white mt-0.5">{stats.totalTrackers}</h3>
           </div>
         </div>
 
-        {/* Stat 2: Topics Completed */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
-            <CheckCheck className="w-5 h-5" />
+        <div className="bg-slate-900/90 border border-slate-800/90 rounded-xl p-4 flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+            <CheckCircle2 className="w-5 h-5" />
           </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-400 font-medium truncate">Topics Mastered</p>
-            <p className="text-xl font-bold text-white tracking-tight">
-              {totalCompletedCount} <span className="text-xs font-medium text-slate-500">/ {totalTopicsCount}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Stat 3: Best Streak */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/10">
-            <Flame className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs text-slate-400 font-medium truncate">Best Active Streak</p>
-            <p className="text-xl font-bold text-amber-400 tracking-tight flex items-center gap-1">
-              {highestStreak} <span className="text-xs font-semibold text-slate-400">days 🔥</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Stat 4: Overall Progress */}
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 flex items-center justify-center shrink-0">
-            <Award className="w-5 h-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-400 font-medium">Overall Progress</p>
-              <span className="text-xs font-bold text-cyan-400">{overallPercentage}%</span>
+          <div>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Topics Done</p>
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <h3 className="text-2xl font-bold text-white">{stats.completedTopics}</h3>
+              <span className="text-xs text-slate-500">/ {stats.totalTopics}</span>
             </div>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+          </div>
+        </div>
+
+        <div className="bg-slate-900/90 border border-slate-800/90 rounded-xl p-4 flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+            <Target className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Progress</p>
+              <span className="text-xs font-semibold text-purple-300">{stats.progressPercentage}%</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
               <div
-                className="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full transition-all duration-300"
-                style={{ width: `${overallPercentage}%` }}
+                className="bg-gradient-to-r from-purple-500 to-indigo-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${stats.progressPercentage}%` }}
               />
             </div>
           </div>
         </div>
+
+        <div className="bg-slate-900/90 border border-slate-800/90 rounded-xl p-4 flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+            <Flame className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Active Streaks</p>
+            <div className="flex items-baseline gap-1.5 mt-0.5">
+              <h3 className="text-2xl font-bold text-white">{stats.maxStreak}</h3>
+              <span className="text-xs text-slate-500">days max</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Tracker Selector Pills Bar */}
-      <div id="tracker-selector-bar" className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {trackers.map((t) => {
-          const isSelected = activeTracker?.id === t.id;
-          const completedInThis = t.topics.filter((top) => top.completed).length;
-          const pct = t.topics.length > 0 ? Math.round((completedInThis / t.topics.length) * 100) : 0;
-
-          return (
-            <button
-              key={t.id}
-              id={`tracker-pill-${t.id}`}
-              onClick={() => setSelectedTrackerId(t.id)}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-semibold shrink-0 transition-all border ${
-                isSelected
-                  ? 'bg-slate-800 border-indigo-500/60 text-white shadow-lg shadow-indigo-500/10 ring-1 ring-indigo-500/40'
-                  : 'bg-slate-900/70 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                {renderTypeBadge(t.type)}
-                <span className="font-bold text-slate-200">{t.name}</span>
-              </div>
-
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 pl-2 border-l border-slate-700/60">
-                <span className="flex items-center gap-0.5 text-amber-400 font-medium">
-                  <Flame className="w-3 h-3 fill-amber-400/20" /> {t.streak || 0}d
-                </span>
-                <span className="font-bold text-cyan-400">{pct}%</span>
-              </div>
-            </button>
-          );
-        })}
-
-        {trackers.length === 0 && (
-          <div className="text-xs text-slate-500 italic py-2">
-            No trackers created yet. Click "AI Generate Tracker" to create your first learning plan!
-          </div>
-        )}
-      </div>
-
-      {/* Empty State when no trackers exist */}
-      {trackers.length === 0 && (
-        <div
-          id="empty-trackers-banner"
-          className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-12 text-center max-w-2xl mx-auto space-y-6"
-        >
-          <div className="w-16 h-16 mx-auto rounded-3xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-xl">
-            <GraduationCap className="w-8 h-8" />
-          </div>
-
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-white">Start Your Learning Journey</h2>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
-              Build your technical interview foundation. Ask Gemini to generate popular coding sheets like Striver A2Z or NeetCode 150, or track system design roadmaps.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-left">
-            {SAMPLE_TEMPLATES.slice(0, 4).map((tmpl, idx) => (
+      {/* Filter and Search Bar */}
+      {trackers.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 border border-slate-800/80 p-2.5 rounded-xl">
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+            {(['all', 'dsa', 'course', 'skills', 'custom'] as const).map((type) => (
               <button
-                key={idx}
-                onClick={() => {
-                  setAiPrompt(tmpl.title);
-                  setAiType(tmpl.type);
-                  setAiDailyGoal(tmpl.goal);
-                  setIsAiModalOpen(true);
-                }}
-                className="p-3.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 text-left transition group"
+                key={type}
+                onClick={() => setSelectedTypeFilter(type)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                  selectedTypeFilter === type
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 transition">
-                    {tmpl.title}
-                  </span>
-                  {renderTypeBadge(tmpl.type)}
-                </div>
-                <p className="text-[11px] text-slate-400 line-clamp-2">{tmpl.desc}</p>
+                {type === 'all'
+                  ? 'All Tracks'
+                  : type === 'dsa'
+                  ? 'DSA'
+                  : type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
             ))}
           </div>
 
-          <div className="pt-2">
-            <button
-              onClick={() => setIsAiModalOpen(true)}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 inline-flex items-center gap-2"
-            >
-              <Sparkles className="w-4 h-4 text-cyan-200" />
-              Generate with Gemini AI
-            </button>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search topics, patterns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-950/80 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/80"
+            />
           </div>
         </div>
       )}
 
-      {/* Active Tracker Main Details */}
-      {activeTracker && (
-        <div id="active-tracker-card" className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 backdrop-blur-xl shadow-2xl">
-          {/* Top Info Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2.5">
-                {renderTypeBadge(activeTracker.type)}
-                <h2 className="text-xl md:text-2xl font-bold text-white tracking-tight">
-                  {activeTracker.name}
-                </h2>
+      {/* Empty State */}
+      {trackers.length === 0 ? (
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-8 md:p-12 text-center max-w-3xl mx-auto shadow-sm">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+            <Brain className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Build Your Targeted Learning Roadmap</h2>
+          <p className="text-sm text-slate-400 max-w-lg mx-auto mb-8">
+            Stay accountable with daily goals, streak counters, and structured problem lists. Generate standard interview sheets like NeetCode 150 or build custom technology roadmaps in seconds.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
+            <button
+              onClick={() => {
+                setAiModalInitialPrompt('NeetCode 150 Coding Interview');
+                setAiModalInitialDays(45);
+                setAiModalInitialColor('#6366f1');
+                setIsAiModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all shadow-md shadow-indigo-600/20"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Generate with AI</span>
+            </button>
+            <button
+              onClick={() => setIsManualModalOpen(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-sm border border-slate-700 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Manually</span>
+            </button>
+          </div>
+
+          <div className="border-t border-slate-800/80 pt-6">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+              Popular Starter Roadmaps
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {QUICK_TEMPLATES.map((tmpl) => (
+                <button
+                  key={tmpl.title}
+                  onClick={() => handleOpenAiWithTemplate(tmpl)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-950/60 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 hover:text-indigo-300 transition-colors flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                  <span>{tmpl.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Trackers Grid */
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {filteredTrackers.map((tracker) => (
+            <TrackerCard
+              key={tracker.id}
+              tracker={tracker}
+              onUpdateTracker={onUpdateTracker}
+              onDeleteTracker={onDeleteTracker}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* AI Generate Modal */}
+      {isAiModalOpen && (
+        <AIGenerateModal
+          initialPrompt={aiModalInitialPrompt}
+          initialDays={aiModalInitialDays}
+          initialColor={aiModalInitialColor}
+          onClose={() => setIsAiModalOpen(false)}
+          onConfirm={async (trackerData) => {
+            await onAddTracker(trackerData);
+            setIsAiModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* Manual Create Modal */}
+      {isManualModalOpen && (
+        <ManualCreateModal
+          onClose={() => setIsManualModalOpen(false)}
+          onConfirm={async (trackerData) => {
+            await onAddTracker(trackerData);
+            setIsManualModalOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// TrackerCard Component
+// ==========================================
+interface TrackerCardProps {
+  tracker: LearningTracker;
+  onUpdateTracker: (id: string, updates: Partial<LearningTracker>) => Promise<void>;
+  onDeleteTracker: (id: string) => Promise<void>;
+}
+
+const TrackerCard: React.FC<TrackerCardProps> = ({
+  tracker,
+  onUpdateTracker,
+  onDeleteTracker,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [topicSearch, setTopicSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [activeNotesTopicId, setActiveNotesTopicId] = useState<string | null>(null);
+  const [tempNotes, setTempNotes] = useState('');
+  const [isAddingTopic, setIsAddingTopic] = useState(false);
+
+  // New topic state
+  const [newTitle, setNewTitle] = useState('');
+  const [newPattern, setNewPattern] = useState('');
+  const [newDifficulty, setNewDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [newLink, setNewLink] = useState('');
+
+  // Statistics for this tracker
+  const totalTopics = tracker.topics?.length || 0;
+  const completedTopics = tracker.topics?.filter((t) => t.completed).length || 0;
+  const progressPercent = totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
+
+  // Days left calculation
+  const daysLeftText = useMemo(() => {
+    if (!tracker.targetDate) return 'Self-paced';
+    const target = new Date(tracker.targetDate).getTime();
+    const now = new Date().getTime();
+    const diffDays = Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+    if (diffDays > 0) return `${diffDays} days left`;
+    if (diffDays === 0) return 'Due today';
+    return `${Math.abs(diffDays)}d overdue`;
+  }, [tracker.targetDate]);
+
+  // Toggle topic completion with streak management
+  const handleToggleTopic = async (topicId: string, currentCompleted: boolean) => {
+    const today = getTodayStr();
+    const yesterday = getYesterdayStr();
+    const willBeCompleted = !currentCompleted;
+
+    let newStreak = tracker.streak || 0;
+    let newLastStudied = tracker.lastStudiedDate;
+
+    if (willBeCompleted) {
+      if (tracker.lastStudiedDate === today) {
+        // Already logged today
+      } else if (tracker.lastStudiedDate === yesterday) {
+        newStreak += 1;
+        newLastStudied = today;
+      } else {
+        newStreak = 1;
+        newLastStudied = today;
+      }
+    }
+
+    const updatedTopics = (tracker.topics || []).map((t) =>
+      t.id === topicId ? { ...t, completed: willBeCompleted } : t
+    );
+
+    await onUpdateTracker(tracker.id, {
+      topics: updatedTopics,
+      streak: newStreak,
+      lastStudiedDate: newLastStudied,
+    });
+  };
+
+  // Save notes for a topic
+  const handleSaveNotes = async (topicId: string) => {
+    const updatedTopics = (tracker.topics || []).map((t) =>
+      t.id === topicId ? { ...t, notes: tempNotes } : t
+    );
+    await onUpdateTracker(tracker.id, { topics: updatedTopics });
+    setActiveNotesTopicId(null);
+  };
+
+  // Delete a topic
+  const handleDeleteTopic = async (topicId: string) => {
+    const updatedTopics = (tracker.topics || []).filter((t) => t.id !== topicId);
+    await onUpdateTracker(tracker.id, { topics: updatedTopics });
+  };
+
+  // Add new topic manually
+  const handleAddNewTopic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+
+    const topicItem: TrackerTopic = {
+      id: `topic_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: newTitle.trim(),
+      pattern: newPattern.trim() || 'General Topics',
+      difficulty: newDifficulty,
+      link: newLink.trim() || undefined,
+      completed: false,
+      notes: '',
+    };
+
+    const updatedTopics = [...(tracker.topics || []), topicItem];
+    await onUpdateTracker(tracker.id, { topics: updatedTopics });
+
+    setNewTitle('');
+    setNewPattern('');
+    setNewLink('');
+    setIsAddingTopic(false);
+  };
+
+  // Reset tracker progress
+  const handleResetProgress = async () => {
+    if (!window.confirm('Reset all progress and streak for this roadmap?')) return;
+    const updatedTopics = (tracker.topics || []).map((t) => ({ ...t, completed: false }));
+    await onUpdateTracker(tracker.id, {
+      topics: updatedTopics,
+      streak: 0,
+      lastStudiedDate: '',
+    });
+  };
+
+  // Filter topics
+  const filteredTopics = useMemo(() => {
+    return (tracker.topics || []).filter((t) => {
+      if (statusFilter === 'completed' && !t.completed) return false;
+      if (statusFilter === 'pending' && t.completed) return false;
+      if (topicSearch.trim()) {
+        const q = topicSearch.toLowerCase();
+        const matchTitle = t.title.toLowerCase().includes(q);
+        const matchPattern = (t.pattern || '').toLowerCase().includes(q);
+        const matchNotes = (t.notes || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchPattern && !matchNotes) return false;
+      }
+      return true;
+    });
+  }, [tracker.topics, statusFilter, topicSearch]);
+
+  // Group topics by pattern
+  const groupedTopics = useMemo(() => {
+    const groups: Record<string, TrackerTopic[]> = {};
+    filteredTopics.forEach((topic) => {
+      const p = topic.pattern || 'Core Curriculum';
+      if (!groups[p]) groups[p] = [];
+      groups[p].push(topic);
+    });
+    return groups;
+  }, [filteredTopics]);
+
+  // Render type pill
+  const renderTypeBadge = (type: TrackerType) => {
+    switch (type) {
+      case 'dsa':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
+            <Code2 className="w-3 h-3" /> DSA
+          </span>
+        );
+      case 'course':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+            <BookOpen className="w-3 h-3" /> Course
+          </span>
+        );
+      case 'skills':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            <Briefcase className="w-3 h-3" /> Skills
+          </span>
+        );
+      case 'custom':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            <Sparkles className="w-3 h-3" /> Custom
+          </span>
+        );
+    }
+  };
+
+  const cardColor = tracker.color || '#6366f1';
+
+  return (
+    <div
+      id={`tracker-card-${tracker.id}`}
+      className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-sm hover:border-slate-700/80 transition-all flex flex-col"
+    >
+      {/* Top accent bar */}
+      <div className="h-1.5 w-full" style={{ backgroundColor: cardColor }} />
+
+      <div className="p-5 flex-1 flex flex-col justify-between">
+        <div>
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-3 mb-2.5">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                {renderTypeBadge(tracker.type)}
+                <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-slate-500" />
+                  {daysLeftText}
+                </span>
               </div>
-              {activeTracker.description && (
-                <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-                  {activeTracker.description}
-                </p>
-              )}
+              <h3 className="text-lg font-bold text-white tracking-tight truncate" title={tracker.name}>
+                {tracker.name}
+              </h3>
             </div>
 
-            {/* Streak & Daily Goal Callouts */}
-            <div className="flex items-center gap-3 shrink-0 flex-wrap">
-              {/* Streak Badge */}
-              <div className="px-4 py-2 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 shadow-sm">
-                <Flame className="w-5 h-5 text-amber-400 fill-amber-400/20 animate-pulse" />
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-amber-300 tracking-wider">Streak</p>
-                  <p className="text-sm font-extrabold text-amber-400">
-                    {activeTracker.streak || 0} Day{activeTracker.streak === 1 ? '' : 's'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Daily Goal Badge */}
-              <div className="px-4 py-2 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center gap-2.5">
-                <Target className="w-5 h-5 text-cyan-400" />
-                <div>
-                  <p className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">Daily Goal</p>
-                  <p className="text-sm font-extrabold text-cyan-400">
-                    {todayCompletedCount} / {activeTracker.dailyGoal || 2} <span className="text-[11px] font-normal text-slate-400">today</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Actions Dropdown / Buttons */}
-              <div className="flex items-center gap-1.5 pl-2 border-l border-slate-800">
-                <button
-                  id="add-topic-btn"
-                  onClick={() => setIsAddTopicModalOpen(true)}
-                  title="Add Single Topic"
-                  className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-
-                <button
-                  id="edit-tracker-btn"
-                  onClick={handleOpenEditTracker}
-                  title="Edit Tracker Details"
-                  className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
-                >
-                  <Edit3 className="w-4 h-4" />
-                </button>
-
-                <button
-                  id="reset-tracker-btn"
-                  onClick={handleResetTrackerProgress}
-                  title="Reset Progress"
-                  className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 transition"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-
-                <button
-                  id="delete-tracker-btn"
-                  onClick={handleDeleteActiveTracker}
-                  title="Delete Tracker"
-                  className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 transition"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={handleResetProgress}
+                title="Reset progress"
+                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onDeleteTracker(tracker.id)}
+                title="Delete tracker"
+                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          {/* Progress Bar & Goal Status Message */}
-          <div className="space-y-2">
-            {todayCompletedCount >= (activeTracker.dailyGoal || 2) && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-center justify-between">
-                <span className="flex items-center gap-2 font-bold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Daily Goal Accomplished! Keep the fire burning 🔥
-                </span>
-                <span className="text-[11px] font-semibold text-emerald-400">
-                  {todayCompletedCount} topics completed today
-                </span>
+          {/* Description */}
+          {tracker.description && (
+            <p className="text-xs text-slate-400 line-clamp-2 mb-4 leading-relaxed">
+              {tracker.description}
+            </p>
+          )}
+
+          {/* Progress Section */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-slate-400 font-medium">
+                Progress: <strong className="text-white">{completedTopics}</strong> / {totalTopics} topics
+              </span>
+              <span className="font-bold text-white">{progressPercent}%</span>
+            </div>
+            <div className="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800/80">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${progressPercent}%`, backgroundColor: cardColor }}
+              />
+            </div>
+          </div>
+
+          {/* Metrics pills row */}
+          <div className="grid grid-cols-3 gap-2.5 py-2.5 border-y border-slate-800/80 mb-4 text-center">
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 flex items-center gap-1">
+                <Flame className="w-3 h-3 text-amber-400" /> Streak
+              </span>
+              <span className="text-sm font-bold text-white mt-0.5">
+                {tracker.streak || 0} <span className="text-[11px] font-normal text-slate-400">days</span>
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center border-x border-slate-800/60">
+              <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 flex items-center gap-1">
+                <Target className="w-3 h-3 text-indigo-400" /> Daily Goal
+              </span>
+              <span className="text-sm font-bold text-white mt-0.5">
+                {tracker.dailyGoal || 2} <span className="text-[11px] font-normal text-slate-400">/ day</span>
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] uppercase font-semibold tracking-wider text-slate-500 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-emerald-400" /> Target
+              </span>
+              <span className="text-xs font-bold text-slate-200 mt-1 truncate max-w-full">
+                {tracker.targetDate ? new Date(tracker.targetDate).toLocaleDateString() : 'Continuous'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Expand / Collapse Topics Toggle */}
+        <div className="pt-1">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full py-2 px-3 rounded-xl bg-slate-950/70 hover:bg-slate-950 border border-slate-800 text-xs font-medium text-slate-300 flex items-center justify-between transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-indigo-400" />
+              <span>
+                {isExpanded ? 'Hide Topics Syllabus' : `View Topics Syllabus (${totalTopics})`}
+              </span>
+            </span>
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded Syllabus View */}
+      {isExpanded && (
+        <div className="bg-slate-950/60 border-t border-slate-800 p-5 space-y-4">
+          {/* Sub-toolbar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-56">
+              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Filter topics..."
+                value={topicSearch}
+                onChange={(e) => setTopicSearch(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+              <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+                {(['all', 'pending', 'completed'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setStatusFilter(mode)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                      statusFilter === mode
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </button>
+                ))}
               </div>
-            )}
 
-            {/* Overall Tracker Progress Bar */}
-            <div className="bg-slate-800/60 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-1 min-w-[200px]">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-300">Curriculum Progress</span>
-                  <span className="font-bold text-white">
-                    {activeTracker.topics.filter((t) => t.completed).length} / {activeTracker.topics.length} (
-                    {activeTracker.topics.length > 0
-                      ? Math.round(
-                          (activeTracker.topics.filter((t) => t.completed).length /
-                            activeTracker.topics.length) *
-                            100
-                        )
-                      : 0}
-                    %)
-                  </span>
-                </div>
-                <div className="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-300"
-                    style={{
-                      width: `${
-                        activeTracker.topics.length > 0
-                          ? Math.round(
-                              (activeTracker.topics.filter((t) => t.completed).length /
-                                activeTracker.topics.length) *
-                                100
-                            )
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
+              <button
+                onClick={() => setIsAddingTopic(!isAddingTopic)}
+                className="px-2.5 py-1 rounded-lg bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/30 border border-indigo-500/30 text-xs font-medium flex items-center gap-1 shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Topic</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Inline Add Topic Form */}
+          {isAddingTopic && (
+            <form
+              onSubmit={handleAddNewTopic}
+              className="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 space-y-3 animate-in fade-in"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Plus className="w-3.5 h-3.5 text-indigo-400" /> Add Custom Topic
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingTopic(false)}
+                  className="text-slate-400 hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Quick Filters */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input
-                    id="search-topics-input"
-                    type="text"
-                    placeholder="Search topics..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-xs text-white rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-44"
-                  />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <input
+                  type="text"
+                  placeholder="Topic or Problem Title (e.g., Trapping Rain Water)"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  required
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Pattern / Module (e.g., Two Pointers, Dynamic Programming)"
+                  value={newPattern}
+                  onChange={(e) => setNewPattern(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
 
-                {/* Category Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <select
-                  id="category-filter-select"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  value={newDifficulty}
+                  onChange={(e) => setNewDifficulty(e.target.value as 'easy' | 'medium' | 'hard')}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="all">All Modules ({categories.length})</option>
-                  {categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
                 </select>
-
-                {/* Filter Tabs */}
-                <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-700/80">
-                  <button
-                    onClick={() => setActiveFilter('all')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                      activeFilter === 'all'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    All ({activeTracker.topics.length})
-                  </button>
-                  <button
-                    onClick={() => setActiveFilter('pending')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                      activeFilter === 'pending'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Pending ({activeTracker.topics.filter((t) => !t.completed).length})
-                  </button>
-                  <button
-                    onClick={() => setActiveFilter('completed')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
-                      activeFilter === 'completed'
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Completed ({activeTracker.topics.filter((t) => t.completed).length})
-                  </button>
-                </div>
+                <input
+                  type="url"
+                  placeholder="Resource / LeetCode URL (Optional)"
+                  value={newLink}
+                  onChange={(e) => setNewLink(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
               </div>
-            </div>
-          </div>
 
-          {/* Topics List Grouped by Category */}
-          <div id="tracker-topics-container" className="space-y-4">
-            {Object.keys(groupedTopics).length === 0 ? (
-              <div className="p-8 text-center bg-slate-800/40 rounded-2xl border border-slate-800 text-slate-400 text-xs space-y-2">
-                <BookOpen className="w-8 h-8 text-slate-600 mx-auto" />
-                <p>No topics found matching current filter or search criteria.</p>
+              <div className="flex justify-end gap-2 pt-1">
                 <button
-                  onClick={() => {
-                    setActiveFilter('all');
-                    setSelectedCategory('all');
-                    setSearchQuery('');
-                  }}
-                  className="text-indigo-400 hover:underline font-semibold"
+                  type="button"
+                  onClick={() => setIsAddingTopic(false)}
+                  className="px-3 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200"
                 >
-                  Clear filters
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-3.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium"
+                >
+                  Save Topic
                 </button>
               </div>
+            </form>
+          )}
+
+          {/* Grouped Topics List */}
+          <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+            {Object.keys(groupedTopics).length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-6">
+                No topics match your current filter.
+              </p>
             ) : (
-              (Object.entries(groupedTopics) as [string, TrackerTopic[]][]).map(([categoryName, topicsList]) => {
-                const isCollapsed = collapsedCategories[categoryName];
-                const catCompletedCount = topicsList.filter((t) => t.completed).length;
-                const catTotalCount = topicsList.length;
-                const isCatAllDone = catCompletedCount === catTotalCount && catTotalCount > 0;
+              (Object.entries(groupedTopics) as [string, TrackerTopic[]][]).map(([patternName, patternTopics]) => {
+                const groupCompleted = patternTopics.filter((t) => t.completed).length;
 
                 return (
-                  <div
-                    key={categoryName}
-                    id={`category-group-${categoryName.replace(/\s+/g, '-').toLowerCase()}`}
-                    className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden transition"
-                  >
-                    {/* Category Header */}
-                    <div className="p-3.5 px-4 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between gap-3">
-                      <button
-                        onClick={() =>
-                          setCollapsedCategories((prev) => ({
-                            ...prev,
-                            [categoryName]: !prev[categoryName],
-                          }))
-                        }
-                        className="flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white text-left transition"
-                      >
-                        {isCollapsed ? (
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-slate-400" />
-                        )}
-                        <span>{categoryName}</span>
-                        <span className="text-[11px] font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700/60">
-                          {catCompletedCount} / {catTotalCount} completed
-                        </span>
-                      </button>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleToggleCategoryAll(categoryName, !isCatAllDone)}
-                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${
-                            isCatAllDone
-                              ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
-                              : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25'
-                          }`}
-                        >
-                          {isCatAllDone ? 'Unmark All' : 'Mark All Done'}
-                        </button>
-                      </div>
+                  <div key={patternName} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 px-1">
+                      <span>{patternName}</span>
+                      <span className="text-slate-500">
+                        {groupCompleted} / {patternTopics.length}
+                      </span>
                     </div>
 
-                    {/* Topics under this category */}
-                    {!isCollapsed && (
-                      <div className="divide-y divide-slate-800/80">
-                        {topicsList.map((topic) => {
-                          const isEditingNotes = editingNotesTopicId === topic.id;
+                    <div className="space-y-1">
+                      {patternTopics.map((topic) => (
+                        <div
+                          key={topic.id}
+                          className={`flex flex-col p-2.5 rounded-xl border transition-all ${
+                            topic.completed
+                              ? 'bg-slate-900/40 border-slate-800/50 opacity-80'
+                              : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <button
+                                onClick={() => handleToggleTopic(topic.id, topic.completed)}
+                                className="shrink-0 text-slate-400 hover:text-indigo-400 transition-colors"
+                              >
+                                {topic.completed ? (
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+                                ) : (
+                                  <Circle className="w-4 h-4 text-slate-500" />
+                                )}
+                              </button>
 
-                          return (
-                            <div
-                              key={topic.id}
-                              id={`topic-row-${topic.id}`}
-                              className={`p-3 px-4 flex flex-col transition ${
-                                topic.completed
-                                  ? 'bg-slate-900/40 opacity-80'
-                                  : 'hover:bg-slate-800/40'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
-                                  {/* Custom Checkbox */}
-                                  <button
-                                    onClick={() => handleToggleTopic(topic.id)}
-                                    className="shrink-0 text-slate-500 hover:text-emerald-400 transition"
-                                    title={topic.completed ? 'Mark pending' : 'Mark completed'}
-                                  >
-                                    {topic.completed ? (
-                                      <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-400/20" />
-                                    ) : (
-                                      <Circle className="w-5 h-5 text-slate-600 hover:text-slate-400" />
-                                    )}
-                                  </button>
-
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span
-                                        onClick={() => handleToggleTopic(topic.id)}
-                                        className={`text-xs font-semibold cursor-pointer select-text ${
-                                          topic.completed
-                                            ? 'line-through text-slate-500'
-                                            : 'text-slate-200 hover:text-white'
-                                        }`}
-                                      >
-                                        {topic.title}
-                                      </span>
-
-                                      {renderDifficultyBadge(topic.difficulty)}
-
-                                      {topic.resourceLink && (
-                                        <a
-                                          href={topic.resourceLink}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-0.5 text-[10px]"
-                                        >
-                                          <ExternalLink className="w-3 h-3" />
-                                        </a>
-                                      )}
-                                    </div>
-
-                                    {topic.completed && topic.completedAt && (
-                                      <p className="text-[10px] text-emerald-500/80 mt-0.5">
-                                        Done on {new Date(topic.completedAt).toLocaleDateString()}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Right Topic Action Icons */}
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  {/* Notes Button */}
-                                  <button
-                                    onClick={() => {
-                                      if (isEditingNotes) {
-                                        setEditingNotesTopicId(null);
-                                      } else {
-                                        setEditingNotesTopicId(topic.id);
-                                        setTempNoteText(topic.notes || '');
-                                      }
-                                    }}
-                                    title={topic.notes ? 'View/edit notes' : 'Add notes'}
-                                    className={`p-1.5 rounded-lg text-xs transition ${
-                                      topic.notes
-                                        ? 'text-cyan-400 bg-cyan-500/10'
-                                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
-                                    }`}
-                                  >
-                                    <FileText className="w-3.5 h-3.5" />
-                                  </button>
-
-                                  {/* Delete Topic */}
-                                  <button
-                                    onClick={() => handleDeleteTopic(topic.id)}
-                                    title="Delete topic"
-                                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {/* Topic Notes Editor / View */}
-                              {isEditingNotes && (
-                                <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 space-y-2">
-                                  <textarea
-                                    value={tempNoteText}
-                                    onChange={(e) => setTempNoteText(e.target.value)}
-                                    placeholder="Add key takeaways, algorithmic patterns, LeetCode submission links, or revision notes..."
-                                    rows={2}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-600"
-                                  />
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={() => setEditingNotesTopicId(null)}
-                                      className="px-3 py-1 bg-slate-800 text-slate-400 text-xs rounded-lg hover:text-white"
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      onClick={() => handleSaveTopicNote(topic.id)}
-                                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg shadow"
-                                    >
-                                      Save Note
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-
-                              {!isEditingNotes && topic.notes && (
-                                <div className="mt-2 text-[11px] text-slate-400 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
-                                  <span className="font-semibold text-cyan-400">Note:</span> {topic.notes}
-                                </div>
-                              )}
+                              <span
+                                className={`text-xs font-medium truncate ${
+                                  topic.completed ? 'line-through text-slate-500' : 'text-slate-200'
+                                }`}
+                                title={topic.title}
+                              >
+                                {topic.title}
+                              </span>
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
+
+                            {/* Tags & Action Icons */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {topic.difficulty && (
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase ${
+                                    topic.difficulty === 'easy'
+                                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                      : topic.difficulty === 'hard'
+                                      ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                                      : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                  }`}
+                                >
+                                  {topic.difficulty}
+                                </span>
+                              )}
+
+                              {topic.link && (
+                                <a
+                                  href={topic.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Open resource link"
+                                  className="text-indigo-400 hover:text-indigo-300 p-1"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+
+                              <button
+                                onClick={() => {
+                                  if (activeNotesTopicId === topic.id) {
+                                    setActiveNotesTopicId(null);
+                                  } else {
+                                    setActiveNotesTopicId(topic.id);
+                                    setTempNotes(topic.notes || '');
+                                  }
+                                }}
+                                title="Add/view solution notes"
+                                className={`p-1 rounded transition-colors ${
+                                  topic.notes
+                                    ? 'text-indigo-400 hover:text-indigo-300'
+                                    : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteTopic(topic.id)}
+                                title="Remove topic"
+                                className="text-slate-600 hover:text-rose-400 p-1 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Inline Notes Drawer */}
+                          {activeNotesTopicId === topic.id && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-800/80 space-y-2 animate-in fade-in">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-semibold text-slate-400">
+                                  Notes & Solution Keypoints
+                                </span>
+                                <span className="text-[10px] text-slate-500">Markdown supported</span>
+                              </div>
+                              <textarea
+                                value={tempNotes}
+                                onChange={(e) => setTempNotes(e.target.value)}
+                                placeholder="Write key patterns, edge cases, time/space complexity takeaways..."
+                                rows={3}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                              />
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => setActiveNotesTopicId(null)}
+                                  className="px-2.5 py-1 text-xs text-slate-400 hover:text-slate-200"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => handleSaveNotes(topic.id)}
+                                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium"
+                                >
+                                  Save Notes
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 );
               })
@@ -1214,491 +970,550 @@ export const LearningHubView: React.FC<LearningHubViewProps> = ({
           </div>
         </div>
       )}
+    </div>
+  );
+};
 
-      {/* ============================================================ */}
-      {/* MODAL 1: AI GENERATE TRACKER WITH GEMINI */}
-      {/* ============================================================ */}
-      {isAiModalOpen && (
-        <div
-          id="ai-generator-modal"
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
-        >
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 space-y-6 shadow-2xl relative">
-            <button
-              onClick={() => setIsAiModalOpen(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-            >
-              <X className="w-5 h-5" />
-            </button>
+// ==========================================
+// AI Generate Modal Component
+// ==========================================
+interface AIGenerateModalProps {
+  initialPrompt: string;
+  initialDays: number;
+  initialColor: string;
+  onClose: () => void;
+  onConfirm: (trackerData: Omit<LearningTracker, 'id'>) => Promise<void>;
+}
 
-            {/* Modal Header */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-                <Sparkles className="w-5 h-5 text-cyan-200" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">AI Learning Curriculum Generator</h3>
-                <p className="text-xs text-slate-400">
-                  Type any sheet or topic, and Gemini will generate a full structured curriculum.
-                </p>
-              </div>
+const AIGenerateModal: React.FC<AIGenerateModalProps> = ({
+  initialPrompt,
+  initialDays,
+  initialColor,
+  onClose,
+  onConfirm,
+}) => {
+  const [userPrompt, setUserPrompt] = useState(initialPrompt);
+  const [targetDays, setTargetDays] = useState(initialDays);
+  const [selectedColor, setSelectedColor] = useState(initialColor);
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<GenerateTrackerResponse | null>(null);
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userPrompt.trim()) return;
+
+    setIsGenerating(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch('/api/generate-tracker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPrompt: userPrompt.trim(),
+          targetDays: Number(targetDays) || 30,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to generate curriculum with Gemini.');
+      }
+
+      const data: GenerateTrackerResponse = await res.json();
+      setPreviewResult(data);
+    } catch (err: any) {
+      console.error('Curriculum generation failed:', err);
+      setErrorMessage(err.message || 'Error communicating with AI service.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleConfirmAdd = async () => {
+    if (!previewResult) return;
+
+    const now = new Date();
+    const targetDateObj = new Date();
+    targetDateObj.setDate(targetDateObj.getDate() + Number(targetDays || 30));
+
+    const topics: TrackerTopic[] = previewResult.topics.map((t, idx) => ({
+      id: `topic_${Date.now()}_${idx}`,
+      title: t.title,
+      pattern: t.pattern || 'Core Pattern',
+      difficulty: t.difficulty || 'medium',
+      link: t.link || undefined,
+      completed: false,
+      notes: '',
+    }));
+
+    const trackerData: Omit<LearningTracker, 'id'> = {
+      userId: '',
+      name: previewResult.name || userPrompt,
+      type: previewResult.type || 'dsa',
+      description: previewResult.description || '',
+      dailyGoal: previewResult.suggestedDailyGoal || 2,
+      targetDate: targetDateObj.toISOString().split('T')[0],
+      streak: 0,
+      lastStudiedDate: '',
+      topics,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      color: selectedColor,
+    };
+
+    await onConfirm(trackerData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        {/* Modal Header */}
+        <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <Sparkles className="w-5 h-5" />
             </div>
-
-            {/* Quick Suggestion Chips */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                Popular Templates
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {SAMPLE_TEMPLATES.map((tmpl, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      setAiPrompt(tmpl.title);
-                      setAiType(tmpl.type);
-                      setAiDailyGoal(tmpl.goal);
-                    }}
-                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition"
-                  >
-                    {tmpl.title}
-                  </button>
-                ))}
-              </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">AI Learning Roadmap Generator</h2>
+              <p className="text-xs text-slate-400">
+                Powered by Gemini 2.5 Flash — transforms goals into actionable syllabi
+              </p>
             </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-            {/* Form Fields */}
-            <div className="space-y-4">
+        {/* Modal Body */}
+        <div className="p-5 overflow-y-auto space-y-5 flex-1">
+          {errorMessage && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3 text-rose-300 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {!previewResult ? (
+            <form onSubmit={handleGenerate} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                   What do you want to master?
                 </label>
-                <input
-                  id="ai-prompt-input"
-                  type="text"
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="e.g. Striver A2Z DSA sheet, NeetCode 150, System Design, React 19..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                <textarea
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  rows={3}
+                  required
+                  placeholder="e.g., Striver A2Z DSA Sheet, NeetCode 150 LeetCode patterns, Senior System Design Roadmap, React 19 Full-Stack..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                    Tracker Category
-                  </label>
-                  <select
-                    value={aiType}
-                    onChange={(e) => setAiType(e.target.value as TrackerType)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
-                  >
-                    <option value="DSA">DSA (Data Structures & Algorithms)</option>
-                    <option value="Course">Course (Curriculum / Book)</option>
-                    <option value="Skills">Skills (Industry Frameworks & Systems)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                    Daily Goal
-                  </label>
-                  <select
-                    value={aiDailyGoal}
-                    onChange={(e) => setAiDailyGoal(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
-                  >
-                    <option value={1}>1 topic / problem per day</option>
-                    <option value={2}>2 topics / problems per day (Recommended)</option>
-                    <option value={3}>3 topics / problems per day</option>
-                    <option value={5}>5 topics / problems per day (Intensive)</option>
-                  </select>
+              {/* Suggestions */}
+              <div>
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2">
+                  Quick Ideas:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_TEMPLATES.map((tmpl) => (
+                    <button
+                      key={tmpl.title}
+                      type="button"
+                      onClick={() => {
+                        setUserPrompt(tmpl.prompt);
+                        setTargetDays(tmpl.days);
+                        setSelectedColor(tmpl.color);
+                      }}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors"
+                    >
+                      {tmpl.title}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {aiError && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
-                  {aiError}
+              {/* Configuration row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Target Days to Finish
+                  </label>
+                  <div className="relative">
+                    <Calendar className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="number"
+                      min={7}
+                      max={365}
+                      value={targetDays}
+                      onChange={(e) => setTargetDays(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
-              )}
 
-              {/* Generate Button */}
-              {!aiPreviewResult && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Color Theme
+                  </label>
+                  <div className="flex items-center gap-2 pt-1">
+                    {COLOR_PRESETS.map((color) => (
+                      <button
+                        key={color.value}
+                        type="button"
+                        onClick={() => setSelectedColor(color.value)}
+                        className={`w-7 h-7 rounded-full ${color.bg} transition-transform ${
+                          selectedColor === color.value
+                            ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-slate-900'
+                            : 'opacity-70 hover:opacity-100'
+                        }`}
+                        title={color.label}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4">
                 <button
-                  id="submit-ai-generate-btn"
-                  onClick={handleGenerateAiTracker}
-                  disabled={isGeneratingAi || !aiPrompt.trim()}
-                  className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50"
+                  type="submit"
+                  disabled={isGenerating || !userPrompt.trim()}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
-                  {isGeneratingAi ? (
+                  {isGenerating ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Gemini is designing your curriculum roadmap...
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Gemini is architecting your roadmap...</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 text-cyan-200" />
-                      Generate Syllabus with Gemini AI
+                      <Sparkles className="w-4 h-4" />
+                      <span>Generate Learning Syllabus</span>
                     </>
                   )}
                 </button>
-              )}
-            </div>
-
-            {/* Generated Preview Results */}
-            {aiPreviewResult && (
-              <div className="space-y-4 pt-4 border-t border-slate-800">
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      {aiPreviewResult.name}
-                      {renderTypeBadge(aiPreviewResult.type || aiType)}
-                    </h4>
-                    <span className="text-xs font-semibold text-cyan-400">
-                      {aiPreviewResult.topics.length} topics generated
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400">{aiPreviewResult.description}</p>
+              </div>
+            </form>
+          ) : (
+            /* Generated Preview */
+            <div className="space-y-4">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">
+                    {previewResult.type.toUpperCase()} Track
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Suggested Pace: <strong>{previewResult.suggestedDailyGoal} topics/day</strong>
+                  </span>
                 </div>
+                <h3 className="text-lg font-bold text-white">{previewResult.name}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">{previewResult.description}</p>
+                <div className="text-xs text-emerald-400 font-semibold pt-1">
+                  Generated {previewResult.topics.length} structured topics across logical patterns.
+                </div>
+              </div>
 
-                {/* Topics Preview List */}
-                <div className="max-h-60 overflow-y-auto space-y-1.5 p-2 bg-slate-950/60 rounded-2xl border border-slate-800 divide-y divide-slate-850">
-                  {aiPreviewResult.topics.map((t, idx) => (
-                    <div key={idx} className="pt-1.5 pb-1 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-slate-500 font-mono text-[10px] w-5">#{idx + 1}</span>
-                        <span className="text-slate-200 font-medium truncate">{t.title}</span>
-                        <span className="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
-                          {t.category}
+              {/* Topics Preview List */}
+              <div>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+                  Preview Syllabus Topics:
+                </span>
+                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 border border-slate-800/80 rounded-xl p-2 bg-slate-950/60">
+                  {previewResult.topics.map((t, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-900 text-xs border border-slate-800/60"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="text-slate-500 font-mono text-[10px] w-5">
+                          {idx + 1}.
                         </span>
+                        <span className="text-slate-200 font-medium truncate">{t.title}</span>
                       </div>
-                      {renderDifficultyBadge(t.difficulty)}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {t.pattern && (
+                          <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                            {t.pattern}
+                          </span>
+                        )}
+                        {t.difficulty && (
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                              t.difficulty === 'easy'
+                                ? 'text-emerald-300'
+                                : t.difficulty === 'hard'
+                                ? 'text-rose-300'
+                                : 'text-amber-300'
+                            }`}
+                          >
+                            {t.difficulty}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
-
-                {/* Final Save Actions */}
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    onClick={() => setAiPreviewResult(null)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl"
-                  >
-                    Regenerate / Adjust
-                  </button>
-                  <button
-                    id="save-ai-tracker-btn"
-                    onClick={handleSaveAiTrackerToFirestore}
-                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-2"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Save & Add to Trackers
-                  </button>
-                </div>
               </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* ============================================================ */}
-      {/* MODAL 2: CUSTOM MANUAL TRACKER */}
-      {/* ============================================================ */}
-      {isManualModalOpen && (
-        <div
-          id="manual-tracker-modal"
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
-        >
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
-            <button
-              onClick={() => setIsManualModalOpen(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200">
-                <Plus className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Create Custom Tracker</h3>
-                <p className="text-xs text-slate-400">Add a custom curriculum and set your daily goal.</p>
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewResult(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Regenerate / Edit Prompt
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAdd}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-2 shadow-md shadow-emerald-600/20 transition-all"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save Roadmap & Start Tracking</span>
+                </button>
               </div>
             </div>
-
-            <form onSubmit={handleSaveManualTracker} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Tracker Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Blind 75 LeetCode, CS50x Harvard..."
-                  value={manualName}
-                  onChange={(e) => setManualName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Type</label>
-                  <select
-                    value={manualType}
-                    onChange={(e) => setManualType(e.target.value as TrackerType)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="DSA">DSA</option>
-                    <option value="Course">Course</option>
-                    <option value="Skills">Skills</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Daily Goal</label>
-                  <select
-                    value={manualDailyGoal}
-                    onChange={(e) => setManualDailyGoal(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value={1}>1 topic / day</option>
-                    <option value={2}>2 topics / day</option>
-                    <option value={3}>3 topics / day</option>
-                    <option value={5}>5 topics / day</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Description (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="Brief objective..."
-                  value={manualDescription}
-                  onChange={(e) => setManualDescription(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">
-                  Topics List (Paste one topic per line)
-                </label>
-                <p className="text-[10px] text-slate-500 mb-1">
-                  Tip: Prefix with category in brackets, e.g. <span className="font-mono text-slate-400">[Arrays] Two Sum</span>
-                </p>
-                <textarea
-                  rows={6}
-                  placeholder={`[Arrays] Two Sum\n[Arrays] Best Time to Buy and Sell Stock\n[Two Pointers] Valid Palindrome\n[Sliding Window] Longest Substring Without Repeating Characters`}
-                  value={manualTopicsText}
-                  onChange={(e) => setManualTopicsText(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs font-mono text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsManualModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-400 text-xs rounded-xl hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow"
-                >
-                  Create Tracker
-                </button>
-              </div>
-            </form>
-          </div>
+          )}
         </div>
-      )}
+      </div>
+    </div>
+  );
+};
 
-      {/* ============================================================ */}
-      {/* MODAL 3: EDIT TRACKER METADATA */}
-      {/* ============================================================ */}
-      {isEditTrackerModalOpen && activeTracker && (
-        <div
-          id="edit-tracker-modal"
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        >
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
-            <button
-              onClick={() => setIsEditTrackerModalOpen(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-            >
-              <X className="w-5 h-5" />
-            </button>
+// ==========================================
+// Manual Create Modal Component
+// ==========================================
+interface ManualCreateModalProps {
+  onClose: () => void;
+  onConfirm: (trackerData: Omit<LearningTracker, 'id'>) => Promise<void>;
+}
 
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Edit3 className="w-4 h-4 text-indigo-400" /> Edit Tracker Details
-            </h3>
+const ManualCreateModal: React.FC<ManualCreateModalProps> = ({ onClose, onConfirm }) => {
+  const [name, setName] = useState('');
+  const [type, setType] = useState<TrackerType>('dsa');
+  const [description, setDescription] = useState('');
+  const [dailyGoal, setDailyGoal] = useState(2);
+  const [targetDays, setTargetDays] = useState(30);
+  const [color, setColor] = useState('#6366f1');
+  const [rawTopics, setRawTopics] = useState('');
 
-            <form onSubmit={handleSaveEditTracker} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Tracker Name</label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Type</label>
-                  <select
-                    value={editType}
-                    onChange={(e) => setEditType(e.target.value as TrackerType)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="DSA">DSA</option>
-                    <option value="Course">Course</option>
-                    <option value="Skills">Skills</option>
-                  </select>
-                </div>
+    const now = new Date();
+    const targetDateObj = new Date();
+    targetDateObj.setDate(targetDateObj.getDate() + Number(targetDays || 30));
 
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Daily Goal</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={editDailyGoal}
-                    onChange={(e) => setEditDailyGoal(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    // Parse topics from textarea
+    const lines = rawTopics
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    const topics: TrackerTopic[] =
+      lines.length > 0
+        ? lines.map((line, idx) => {
+            let pattern = 'General Topics';
+            let title = line;
+            const match = line.match(/^\[(.*?)\]\s*(.*)$/);
+            if (match) {
+              pattern = match[1];
+              title = match[2];
+            }
+            return {
+              id: `topic_${Date.now()}_${idx}`,
+              title,
+              pattern,
+              difficulty: 'medium',
+              completed: false,
+              notes: '',
+            };
+          })
+        : [
+            {
+              id: `topic_${Date.now()}_0`,
+              title: 'Getting Started with ' + name,
+              pattern: 'Foundation',
+              difficulty: 'easy',
+              completed: false,
+              notes: '',
+            },
+          ];
+
+    const trackerData: Omit<LearningTracker, 'id'> = {
+      userId: '',
+      name: name.trim(),
+      type,
+      description: description.trim(),
+      dailyGoal: Number(dailyGoal) || 2,
+      targetDate: targetDateObj.toISOString().split('T')[0],
+      streak: 0,
+      lastStudiedDate: '',
+      topics,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      color,
+    };
+
+    await onConfirm(trackerData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 text-white flex items-center justify-center">
+              <Plus className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-white">Create Custom Roadmap</h2>
+              <p className="text-xs text-slate-400">Configure your learning tracks and problem sets manually</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 p-1">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 flex-1">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              Roadmap Name *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g., Blind 75 LeetCode, AWS Solutions Architect, Docker Mastery"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Category Type
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as TrackerType)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-medium"
+              >
+                <option value="dsa">DSA (Data Structures & Algorithms)</option>
+                <option value="course">Course (Curriculum / Book)</option>
+                <option value="skills">Skills (Engineering Concepts)</option>
+                <option value="custom">Custom (Personal Goal)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Color Theme
+              </label>
+              <div className="flex items-center gap-2 pt-1">
+                {COLOR_PRESETS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => setColor(c.value)}
+                    className={`w-7 h-7 rounded-full ${c.bg} transition-transform ${
+                      color === c.value
+                        ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-slate-900'
+                        : 'opacity-70 hover:opacity-100'
+                    }`}
+                    title={c.label}
                   />
-                </div>
+                ))}
               </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">
-                  Current Streak (Days)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={365}
-                  value={editStreak}
-                  onChange={(e) => setEditStreak(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditTrackerModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-400 text-xs rounded-xl hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* ============================================================ */}
-      {/* MODAL 4: ADD SINGLE TOPIC */}
-      {/* ============================================================ */}
-      {isAddTopicModalOpen && activeTracker && (
-        <div
-          id="add-topic-modal"
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-        >
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl relative">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              Description (Optional)
+            </label>
+            <input
+              type="text"
+              placeholder="Brief target or milestone goal..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Daily Goal (topics/day)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={dailyGoal}
+                onChange={(e) => setDailyGoal(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                Target Days
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={targetDays}
+                onChange={(e) => setTargetDays(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              Initial Topics / Problems (One per line)
+            </label>
+            <p className="text-[11px] text-slate-500 mb-1.5">
+              Tip: Use <code className="text-indigo-300">[Pattern Name] Topic Title</code> syntax to group topics!
+            </p>
+            <textarea
+              rows={4}
+              value={rawTopics}
+              onChange={(e) => setRawTopics(e.target.value)}
+              placeholder="[Arrays] Two Sum&#10;[Arrays] Best Time to Buy and Sell Stock&#10;[Two Pointers] Valid Palindrome"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
             <button
-              onClick={() => setIsAddTopicModalOpen(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-200"
             >
-              <X className="w-5 h-5" />
+              Cancel
             </button>
-
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Plus className="w-4 h-4 text-emerald-400" /> Add Topic to {activeTracker.name}
-            </h3>
-
-            <form onSubmit={handleAddSingleTopic} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">Topic Title *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Trapping Rain Water, Redux Thunk Middleware..."
-                  value={newTopicTitle}
-                  onChange={(e) => setNewTopicTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Category / Module</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Dynamic Programming"
-                    value={newTopicCategory}
-                    onChange={(e) => setNewTopicCategory(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1">Difficulty</label>
-                  <select
-                    value={newTopicDifficulty}
-                    onChange={(e) => setNewTopicDifficulty(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="Easy">Easy</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Hard">Hard</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1">
-                  Resource Link (Optional)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://leetcode.com/problems/..."
-                  value={newTopicLink}
-                  onChange={(e) => setNewTopicLink(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddTopicModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-400 text-xs rounded-xl hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow"
-                >
-                  Add Topic
-                </button>
-              </div>
-            </form>
+            <button
+              type="submit"
+              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20"
+            >
+              Create Roadmap
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </div>
     </div>
   );
 };

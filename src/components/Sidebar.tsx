@@ -10,17 +10,17 @@ import {
   PlaneTakeoff,
   BookmarkPlus,
   Sparkles,
-  GraduationCap,
+  Brain,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export type ActiveTab =
   | 'dashboard'
   | 'tracker'
-  | 'learning-hub'
   | 'resume-tailor'
   | 'interview-prep'
   | 'gmail-sync'
+  | 'learning-hub'
   | 'settings';
 
 interface SidebarProps {
@@ -34,10 +34,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'tracker', label: 'Applications Tracker', icon: Kanban },
-    { id: 'learning-hub', label: 'Learning Hub', icon: GraduationCap, hasAi: true },
     { id: 'resume-tailor', label: 'AI Resume Tailor', icon: FileText, hasAi: true },
     { id: 'interview-prep', label: 'Interview Prep & Logs', icon: MessageSquareCode },
     { id: 'gmail-sync', label: 'Gmail Auto-Track', icon: Mail },
+    { id: 'learning-hub', label: 'Learning Hub', icon: Brain, hasAi: true },
     { id: 'settings', label: 'Settings & Bookmarklets', icon: Settings },
   ];
 

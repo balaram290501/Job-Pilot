@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { tailorResume, generatePrepBrief, analyzeRejectionPatterns, classifyEmailsWithGemini, generateTrackerWithGemini } from './src/server/geminiService.js';
+import { tailorResume, generatePrepBrief, analyzeRejectionPatterns, classifyEmailsWithGemini, generateTrackerWithGemini, generateLearningTracker } from './src/server/geminiService.js';
 import { getUserByApiToken, generateSaveJobBookmarkletScript, generateAutofillBookmarkletScript } from './src/server/bookmarkletService.js';
 import { adminDb } from './src/lib/serverFirebase.js';
 
@@ -83,15 +83,35 @@ async function startServer() {
     }
   });
 
+  // FEATURE: Generate Learning Tracker API
+  app.post('/api/generate-tracker', async (req, res) => {
+    try {
+      const { userPrompt, targetDays, query } = req.body;
+      const prompt = (userPrompt || query || '').trim();
+      if (!prompt) {
+        return res.status(400).json({ error: 'userPrompt is required to generate learning tracker.' });
+      }
+
+      const days = targetDays ? Number(targetDays) : undefined;
+      const result = await generateLearningTracker(prompt, days);
+      res.json(result);
+    } catch (err: any) {
+      console.error('Error in /api/generate-tracker:', err);
+      res.status(500).json({ error: err.message || 'Failed to generate learning tracker.' });
+    }
+  });
+
   // FEATURE: Generate Learning Tracker Topics API
   app.post('/api/generate-tracker-topics', async (req, res) => {
     try {
-      const { query = '', preferredType } = req.body;
-      if (!query || typeof query !== 'string' || !query.trim()) {
-        return res.status(400).json({ error: 'Query is required to generate learning tracker.' });
+      const { query, userPrompt, targetDays } = req.body;
+      const promptText = (userPrompt || query || '').trim();
+      if (!promptText) {
+        return res.status(400).json({ error: 'userPrompt or query is required to generate learning tracker.' });
       }
 
-      const generated = await generateTrackerWithGemini(query.trim(), preferredType);
+      const daysNum = targetDays ? Number(targetDays) : undefined;
+      const generated = await generateLearningTracker(promptText, daysNum);
       res.json(generated);
     } catch (err: any) {
       console.error('Error in /api/generate-tracker-topics:', err);

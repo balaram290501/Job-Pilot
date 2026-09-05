@@ -9,7 +9,7 @@ import {
   db,
   User,
 } from '../lib/firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { UserDoc } from '../types';
 
 interface AuthContextType {
@@ -41,42 +41,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubscribeUserDoc: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
-      if (firebaseUser) {
-        await syncUserDoc(firebaseUser);
-      } else {
-        setUserDoc(null);
-        setGoogleAccessToken(null);
+
+      // Clean up previous user listener
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+        unsubscribeUserDoc = null;
       }
-      setLoading(false);
-    });
 
-    return () => unsubscribe();
-  }, []);
-
-  const syncUserDoc = async (firebaseUser: User) => {
-    try {
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      const snap = await getDoc(userRef);
-
-      if (snap.exists()) {
-        const data = snap.data() as UserDoc;
-        // Ensure token exists
-        if (!data.apiToken) {
-          const newToken = generateTokenString();
-          await updateDoc(userRef, { apiToken: newToken });
-          data.apiToken = newToken;
-        }
-        setUserDoc({ ...data, uid: firebaseUser.uid });
-      } else {
-        // Bootstrap new user doc
-        const newToken = generateTokenString();
+      if (firebaseUser) {
+        // Construct immediate default profile so user is never stuck in a null state
         const initialDoc: UserDoc = {
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || 'JobPilot User',
           email: firebaseUser.email || '',
-          resumeMasterText: 'Experienced Software Engineer skilled in React, Node.js, TypeScript, and Cloud Architecture.',
+          resumeMasterText:
+            'Experienced Software Engineer skilled in React, Node.js, TypeScript, and Cloud Architecture.',
           preferences: {
             targetRoles: ['Frontend Developer', 'Full Stack Engineer'],
             locations: ['Remote', 'Bangalore', 'San Francisco'],
@@ -91,18 +74,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             linkedInUrl: 'https://linkedin.com/in/user',
             yearsOfExperience: '4 Years',
           },
-          apiToken: newToken,
+          apiToken: generateTokenString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
 
-        await setDoc(userRef, initialDoc);
-        setUserDoc(initialDoc);
+        // Optimistically set fallback immediately
+        setUserDoc((prev) => prev || initialDoc);
+
+        // Realtime Firestore synchronization with onSnapshot (resilient to offline/online events)
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        unsubscribeUserDoc = onSnapshot(
+          userRef,
+          async (snap) => {
+            if (snap.exists()) {
+              const data = snap.data() as UserDoc;
+              if (!data.apiToken) {
+                const newToken = generateTokenString();
+                try {
+                  await setDoc(userRef, { apiToken: newToken }, { merge: true });
+                  data.apiToken = newToken;
+                } catch {
+                  // Non-fatal if offline
+                }
+              }
+              setUserDoc({ ...data, uid: firebaseUser.uid });
+            } else {
+              // Document does not exist on Firestore yet, persist bootstrap doc
+              try {
+                await setDoc(userRef, initialDoc, { merge: true });
+                setUserDoc(initialDoc);
+              } catch {
+                // Non-fatal if offline
+                setUserDoc((prev) => prev || initialDoc);
+              }
+            }
+            setLoading(false);
+          },
+          (err) => {
+            // Log as informational notice rather than crashing
+            console.warn('User doc snapshot sync notice (offline mode active):', err);
+            setUserDoc((prev) => prev || initialDoc);
+            setLoading(false);
+          }
+        );
+      } else {
+        setUserDoc(null);
+        setGoogleAccessToken(null);
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Error syncing user doc:', err);
-    }
-  };
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeUserDoc) {
+        unsubscribeUserDoc();
+      }
+    };
+  }, []);
 
   const signInWithGoogle = async (): Promise<string | null> => {
     try {
@@ -132,13 +161,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateUserProfile = async (data: Partial<UserDoc>) => {
     if (!user) return;
+    const updatedFields = { ...data, updatedAt: new Date().toISOString() };
+    setUserDoc((prev) => (prev ? { ...prev, ...updatedFields } : null));
+
     try {
       const userRef = doc(db, 'users', user.uid);
-      const updatedFields = { ...data, updatedAt: new Date().toISOString() };
-      await updateDoc(userRef, updatedFields);
-      setUserDoc((prev) => (prev ? { ...prev, ...updatedFields } : null));
+      await setDoc(userRef, updatedFields, { merge: true });
     } catch (err) {
-      console.error('Failed to update user profile:', err);
+      console.warn('Failed to update user profile in Firestore (offline mode active):', err);
     }
   };
 

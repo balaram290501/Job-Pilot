@@ -109,17 +109,16 @@ export interface ClassifiedEmail {
   confidence: number;
 }
 
-export type TrackerType = 'DSA' | 'Course' | 'Skills';
+export type TrackerType = 'dsa' | 'course' | 'skills' | 'custom';
 
 export interface TrackerTopic {
   id: string;
   title: string;
-  category?: string; // e.g., "Arrays", "Binary Trees", "System Design", "Module 1"
-  difficulty?: 'Easy' | 'Medium' | 'Hard' | string;
   completed: boolean;
-  completedAt?: string;
-  notes?: string;
-  resourceLink?: string;
+  notes: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  link?: string;
+  pattern?: string;
 }
 
 export interface LearningTracker {
@@ -127,25 +126,28 @@ export interface LearningTracker {
   userId: string;
   name: string;
   type: TrackerType;
-  description?: string;
-  dailyGoal: number; // e.g. 2 topics / problems per day
-  streak: number; // consecutive active days
-  lastCompletedDate?: string; // YYYY-MM-DD
+  description: string;
   topics: TrackerTopic[];
+  dailyGoal: number;
+  targetDate: string;
+  streak: number;
+  lastStudiedDate: string;
   createdAt: string;
-  lastUpdated: string;
+  updatedAt: string;
+  color: string;
 }
 
 export interface GenerateTrackerResponse {
   name: string;
   type: TrackerType;
   description: string;
-  recommendedDailyGoal: number;
   topics: Array<{
     title: string;
-    category: string;
-    difficulty?: string;
-    resourceLink?: string;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    link?: string;
+    pattern?: string;
   }>;
+  suggestedDailyGoal: number;
 }
+
 
